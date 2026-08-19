@@ -15,6 +15,18 @@ struct DayMapView: View {
 
     @Environment(\.scenePhase)
     private var scenePhase
+    
+    @Environment(\.openURL)
+    private var openURL
+    
+    @State
+    private var presentedNodeID:
+        GameNodeID?
+
+
+    @State
+    private var presentedMediaNodeID:
+        GameNodeID?
 
 
     // MARK: - State
@@ -25,6 +37,10 @@ struct DayMapView: View {
 
     @State
     private var scene: VirtualMapScene
+    
+    @State
+    private var isShowingAddNode =
+        false
 
 
     // MARK: - Init
@@ -40,7 +56,9 @@ struct DayMapView: View {
                 initialTime:
                     gameStore.currentDayTime,
                 roadGraph:
-                    gameStore.roadGraph
+                    gameStore.roadGraph,
+                gameNodes:
+                    gameStore.gameNodes
             )
 
 
@@ -86,13 +104,25 @@ struct DayMapView: View {
                 Spacer()
 
 
-                /*
-                 RoadInspectorHUD is only visible
-                 when a road edge or road vertex
-                 is selected.
-                 */
+                if
+                    let nodeID =
+                        store.selection
+                            .selectedNodeID,
 
-                if hasRoadSelection {
+                    let gameNode =
+                        store.gameNode(
+                            id:
+                                nodeID
+                        )
+                {
+
+                    GameNodeInspectorHUD(
+                        node:
+                            gameNode
+                    )
+
+
+                } else if hasRoadSelection {
 
                     RoadInspectorHUD(
                         graph:
@@ -112,8 +142,74 @@ struct DayMapView: View {
                 bottomDiagnosticHUD
             }
             .padding()
-        }
+            
+            VStack {
 
+                HStack {
+
+                    Spacer()
+
+
+                    Button {
+
+                        isShowingAddNode =
+                            true
+
+                    } label: {
+
+                        Image(
+                            systemName:
+                                "plus"
+                        )
+                        .font(
+                            .headline
+                        )
+                        .frame(
+                            width:
+                                44,
+                            height:
+                                44
+                        )
+                        .background(
+                            .ultraThinMaterial
+                        )
+                        .clipShape(
+                            Circle()
+                        )
+                    }
+                    .buttonStyle(
+                        .plain
+                    )
+                }
+                .padding()
+
+
+                Spacer()
+            }
+            
+            
+        } //zs
+        .sheet(
+            isPresented:
+                $isShowingAddNode
+        ) {
+
+            AddGameNodeView(
+                initialCoordinate:
+                    newNodeInitialCoordinate,
+                roadGraph:
+                    store.roadGraph
+            ) { newNode in
+
+                store.addGameNode(
+                    newNode
+                )
+
+
+                isShowingAddNode =
+                    false
+            }
+        }
 
         // MARK: - Appear
 
@@ -130,10 +226,11 @@ struct DayMapView: View {
                 store.currentDayTime
             )
 
-
-            scene.renderRoadSelection(
+            scene.renderSelection(
                 store.selection
             )
+            
+
         }
 
 
@@ -192,25 +289,114 @@ struct DayMapView: View {
         }
 
 
-        // MARK: - Road Selection
-
+        // MARK: - Selection
         .onChange(
             of:
                 store.selection
         ) { _, newSelection in
 
-            /*
-             GameStore remains the source
-             of truth.
-
-             SpriteKit only renders the
-             resulting selection.
-             */
-
-            scene.renderRoadSelection(
+            scene.renderSelection(
                 newSelection
             )
         }
+        
+        .onChange(
+            of:
+                store.gameNodes
+        ) { _, newNodes in
+
+            scene.renderGameNodes(
+                newNodes
+            )
+        }
+        
+        .onChange(
+            of:
+                store.pendingNodeAction
+        ) { _, newAction in
+
+            guard let newAction else {
+
+                return
+            }
+
+
+            handleNodeAction(
+                newAction
+            )
+        }
+        
+        .sheet(
+            item:
+                $presentedNodeID
+        ) { nodeID in
+
+            if let node =
+                store.gameNode(
+                    id:
+                        nodeID
+                )
+            {
+
+                GameNodeEditorView(
+                    node:
+                        node,
+                    roadGraph:
+                        store.roadGraph,
+                    onSave: { updatedNode in
+
+                        store.updateGameNode(
+                            updatedNode
+                        )
+
+                    },
+                    onDelete: {
+
+                        store.deleteGameNode(
+                            id:
+                                node.id
+                        )
+                    }
+                )
+                
+            }
+        }
+        
+        .fullScreenCover(
+            item:
+                $presentedMediaNodeID
+        ) { nodeID in
+
+            if let node =
+                store.gameNode(
+                    id:
+                        nodeID
+                )
+            {
+
+                GameNodeEditorView(
+                    node:
+                        node,
+                    roadGraph:
+                        store.roadGraph,
+                    onSave: { updatedNode in
+
+                        store.updateGameNode(
+                            updatedNode
+                        )
+
+                    },
+                    onDelete: {
+
+                        store.deleteGameNode(
+                            id:
+                                node.id
+                        )
+                    }
+                )
+            }
+        }
+        
     }
 }
 
@@ -264,7 +450,7 @@ private extension DayMapView {
 
 
                     Text(
-                        "Section 3E • Road Inspection"
+                        "Section 4A • Interactive Nodes"
                     )
                     .font(
                         .caption
@@ -309,16 +495,6 @@ private extension DayMapView {
 
 
             HStack {
-
-                Text(
-                    "1000 × 2400"
-                )
-                .font(
-                    .caption.monospaced()
-                )
-                .foregroundStyle(
-                    .secondary
-                )
 
 
                 Spacer()
@@ -373,10 +549,6 @@ private extension DayMapView {
 
             switch interaction {
 
-            // =====================================
-            // Background
-            // =====================================
-
             case let .backgroundTapped(
                 worldPoint,
                 coordinate
@@ -390,31 +562,9 @@ private extension DayMapView {
                 )
 
 
-            // =====================================
-            // Road Edge
-            // =====================================
-
-            case .roadEdgeTapped:
-
-                /*
-                 RoadInspectorHUD displays all
-                 edge information, so we don't
-                 need a second HUD here.
-                 */
-
-                EmptyView()
-
-
-            // =====================================
-            // Road Vertex / Intersection
-            // =====================================
-
-            case .roadVertexTapped:
-
-                /*
-                 RoadInspectorHUD displays all
-                 intersection information.
-                 */
+            case .roadEdgeTapped,
+                 .roadVertexTapped,
+                 .gameNodeTapped:
 
                 EmptyView()
             }
@@ -576,5 +726,122 @@ private extension DayMapView {
                     16
             )
         )
+    }
+}
+
+
+private extension DayMapView {
+
+    func openHyperlink(
+        _ urlString:
+            String
+    ) {
+
+        guard
+            let url =
+                URL(
+                    string:
+                        urlString
+                ),
+
+            let scheme =
+                url.scheme?
+                    .lowercased(),
+
+            scheme == "http"
+            ||
+            scheme == "https"
+        else {
+
+            return
+        }
+
+
+        openURL(
+            url
+        )
+    }
+}
+
+private extension DayMapView {
+
+    var newNodeInitialCoordinate:
+        MapCoordinate {
+
+        MapCoordinate(
+            time:
+                store.currentDayTime,
+            progress:
+                MapProgress(
+                    50
+                )
+        )
+    }
+}
+
+private extension DayMapView {
+
+    func handleNodeAction(
+        _ action:
+            GameNodeAction
+    ) {
+
+        switch action {
+
+        case let .showLabel(
+            nodeID
+        ):
+
+            presentedNodeID =
+                nodeID
+
+
+        case let .showUser(
+            nodeID,
+            _
+        ):
+
+            presentedNodeID =
+                nodeID
+
+
+        case let .showActivity(
+            nodeID,
+            _
+        ):
+
+            presentedNodeID =
+                nodeID
+
+
+        case let .showPost(
+            nodeID,
+            _
+        ):
+
+            presentedNodeID =
+                nodeID
+
+
+        case let .showMedia(
+            nodeID,
+            _
+        ):
+
+            presentedMediaNodeID =
+                nodeID
+
+
+        case let .openHyperlink(
+            nodeID,
+            _
+        ):
+
+            presentedNodeID =
+                nodeID
+        }
+
+
+        store.consumePendingNodeAction()
     }
 }

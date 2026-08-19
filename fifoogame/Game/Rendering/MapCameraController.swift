@@ -386,7 +386,7 @@ private extension MapCameraController {
         _ recognizer:
             UIPanGestureRecognizer
     ) {
-
+        
         guard
             let scene,
             let view =

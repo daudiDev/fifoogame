@@ -5,69 +5,64 @@
 //  Created by Daudi Sagala on 8/18/26.
 //
 
-
-//
-//  VirtualMapScene.swift
-//  Fifoo
-//
-
 import SpriteKit
 
 
 @MainActor
-final class VirtualMapScene:
-    SKScene {
+final class VirtualMapScene: SKScene {
 
+    // =====================================================
     // MARK: - Interaction
+    // =====================================================
 
     weak var interactionDelegate:
         SceneInteractionDelegate?
 
 
+    // =====================================================
     // MARK: - Domain Input
+    // =====================================================
 
     private let roadGraph:
         RoadGraph
 
 
-    // MARK: - Layers
+    private var gameNodes:
+        [GameMapNode]
+
+
+    // =====================================================
+    // MARK: - Scene Layers
+    // =====================================================
 
     private let backgroundLayer =
         SKNode()
 
+    private let gridLayer =
+        SKNode()
 
     private let roadLayer =
         SKNode()
 
-
     private let routeLayer =
         SKNode()
-
 
     private let nodeLayer =
         SKNode()
 
-
     private let timeIndicatorLayer =
         SKNode()
 
-
     private let selectionLayer =
         SKNode()
-
 
     private let debugLayer =
         SKNode()
 
 
+    // =====================================================
     // MARK: - Renderers
-    
-    private let roadHitTester =
-        RoadHitTester()
-
-
-    private let roadSelectionRenderer =
-        RoadSelectionRenderer()
+    // =====================================================
 
     private let gridRenderer =
         MapGridRenderer()
@@ -77,29 +72,61 @@ final class VirtualMapScene:
         RoadLayerRenderer()
 
 
+    private let roadSelectionRenderer =
+        RoadSelectionRenderer()
+
+
     private let currentTimeRenderer =
         CurrentTimeRenderer()
 
 
+    private let gameNodeRenderer =
+        GameNodeRenderer()
+
+
+    // =====================================================
+    // MARK: - Hit Testing
+    // =====================================================
+
+    private let roadHitTester =
+        RoadHitTester()
+
+
+    private let gameNodeHitTester =
+        GameNodeHitTester()
+
+
+    // =====================================================
     // MARK: - Camera
+    // =====================================================
 
     private let cameraController =
         MapCameraController()
 
 
-    // MARK: - Time
+    // =====================================================
+    // MARK: - Scene State
+    // =====================================================
 
     private var currentTime:
         DayTime
 
 
-    // MARK: - Scene State
+    /*
+     Keep the current semantic selection in the scene.
 
-    private var hasConfiguredScene =
-        false
+     GameStore remains authoritative.
+
+     This copy only lets us restore the visual selection
+     when nodes are re-rendered.
+     */
+    private var currentSelection =
+        SelectionState()
 
 
-    // MARK: - Tap State
+    // =====================================================
+    // MARK: - Touch State
+    // =====================================================
 
     private var touchBeganWhileMomentumWasActive =
         false
@@ -109,13 +136,17 @@ final class VirtualMapScene:
         false
 
 
+    // =====================================================
     // MARK: - Init
+    // =====================================================
 
     init(
         initialTime:
             DayTime,
         roadGraph:
-            RoadGraph
+            RoadGraph,
+        gameNodes:
+            [GameMapNode]
     ) {
 
         self.currentTime =
@@ -126,9 +157,14 @@ final class VirtualMapScene:
             roadGraph
 
 
+        self.gameNodes =
+            gameNodes
+
+
         super.init(
             size:
-                MapWorldConfiguration.sceneSize
+                MapWorldConfiguration
+                    .sceneSize
         )
 
 
@@ -146,7 +182,11 @@ final class VirtualMapScene:
 
 
         self.roadGraph =
-            SampleRoadGraph.make()
+            DenseCityRoadGraph.make()
+
+
+        self.gameNodes =
+            SampleGameNodes.make()
 
 
         super.init(
@@ -158,28 +198,72 @@ final class VirtualMapScene:
         commonInit()
     }
 
+    
+}
 
-    private func commonInit() {
+
+// =====================================================
+// MARK: - Initial Configuration
+// =====================================================
+
+private extension VirtualMapScene {
+
+    func commonInit() {
+
+        // MARK: Coordinate System
+
+        /*
+         Fifoo world:
+
+         top-left:
+             (0, 0)
+
+         bottom:
+             y = -2400
+         */
 
         anchorPoint =
             CGPoint(
-                x:
-                    0,
-                y:
-                    1
+                x: 0,
+                y: 1
             )
 
 
         scaleMode =
             .aspectFit
 
+
         backgroundColor =
-            MapVisualTheme.landColor
-        
+            MapVisualTheme
+                .landColor
+
+
+        /*
+         Build all scene content immediately.
+
+         None of these operations require SKView.
+         */
+
+        configureLayers()
+
+        configureCoordinateGrid()
+
+        configureRoadNetwork()
+
+        configureGameNodes()
+
+        configureCurrentTimeIndicator()
+
+        configureDiagnostics()
     }
+}
 
 
-    // MARK: - Lifecycle
+// =====================================================
+// MARK: - Lifecycle
+// =====================================================
+
+extension VirtualMapScene {
 
     override func didMove(
         to view:
@@ -190,28 +274,6 @@ final class VirtualMapScene:
             to:
                 view
         )
-
-
-        if !hasConfiguredScene {
-
-            hasConfiguredScene =
-                true
-
-
-            configureLayers()
-
-
-            configureCoordinateGrid()
-
-
-            configureRoadNetwork()
-
-
-            configureCurrentTimeIndicator()
-
-
-            configureDiagnostics()
-        }
 
 
         cameraController.install(
@@ -230,153 +292,123 @@ final class VirtualMapScene:
             SKView
     ) {
 
-        super.willMove(
-            from:
-                view
-        )
-
+        /*
+         Remove UIKit gesture recognizers before
+         the SpriteKit view goes away.
+         */
 
         cameraController
             .detachGestures(
                 from:
                     view
             )
+
+
+        resetTouchState()
+
+
+        super.willMove(
+            from:
+                view
+        )
     }
+}
 
+// =====================================================
+// MARK: - SpriteKit Frame Update
+// =====================================================
 
-    // MARK: - SpriteKit Frame Update
+extension VirtualMapScene {
 
     override func update(
-        _ currentTime:
+        _ currentFrameTime:
             TimeInterval
     ) {
 
         super.update(
-            currentTime
+            currentFrameTime
         )
 
 
         cameraController
             .updateMomentum(
                 currentTime:
-                    currentTime
+                    currentFrameTime
             )
     }
+}
 
+// =====================================================
+// MARK: - Layers
+// =====================================================
 
-    // MARK: - Time API
+private extension VirtualMapScene {
 
-    func renderCurrentTime(
-        _ time:
-            DayTime
-    ) {
+    func configureLayers() {
 
-        currentTime =
-            time
-
-
-        guard
-            hasConfiguredScene
-        else {
-
-            return
-        }
-
-
-        currentTimeRenderer
-            .render(
-                time:
-                    time
-            )
-    }
-
-
-    func centerCameraOnCurrentTime(
-        animated:
-            Bool = true
-    ) {
-
-        guard let view else {
-
-            return
-        }
-
-
-        cameraController.center(
-            on:
-                currentTime,
-            in:
-                self,
-            view:
-                view,
-            animated:
-                animated
-        )
-    }
-
-
-    // MARK: - Layers
-
-    private func configureLayers() {
+        // MARK: Names
 
         backgroundLayer.name =
             "backgroundLayer"
 
+        gridLayer.name =
+            "gridLayer"
 
         roadLayer.name =
             "roadLayer"
 
-
         routeLayer.name =
             "routeLayer"
-
 
         nodeLayer.name =
             "nodeLayer"
 
-
         timeIndicatorLayer.name =
             "timeIndicatorLayer"
 
-
         selectionLayer.name =
             "selectionLayer"
-
 
         debugLayer.name =
             "debugLayer"
 
 
+        // MARK: Z Order
+
         backgroundLayer.zPosition =
             0
 
+        gridLayer.zPosition =
+            25
 
         roadLayer.zPosition =
             100
 
-
         routeLayer.zPosition =
             200
-
 
         nodeLayer.zPosition =
             300
 
-
         timeIndicatorLayer.zPosition =
             350
 
-
         selectionLayer.zPosition =
             400
-
 
         debugLayer.zPosition =
             1000
 
 
+        // MARK: Scene Hierarchy
+
         addChild(
             backgroundLayer
+        )
+
+
+        addChild(
+            gridLayer
         )
 
 
@@ -403,36 +435,20 @@ final class VirtualMapScene:
         addChild(
             selectionLayer
         )
-        
-        selectionLayer.addChild(
-            roadSelectionRenderer
-                .containerNode
-        )
 
 
         addChild(
             debugLayer
         )
-    }
 
 
-    // MARK: - Coordinate Grid
+        // MARK: Renderer Hierarchy
 
-    private func configureCoordinateGrid() {
-
-        backgroundLayer.addChild(
+        gridLayer.addChild(
             gridRenderer
                 .containerNode
         )
 
-
-        gridRenderer.rebuild()
-    }
-
-
-    // MARK: - Roads
-
-    private func configureRoadNetwork() {
 
         roadLayer.addChild(
             roadRenderer
@@ -440,16 +456,11 @@ final class VirtualMapScene:
         )
 
 
-        roadRenderer.render(
-            graph:
-                roadGraph
+        nodeLayer.addChild(
+            gameNodeRenderer
+                .containerNode
         )
-    }
 
-
-    // MARK: - Current Time
-
-    private func configureCurrentTimeIndicator() {
 
         timeIndicatorLayer.addChild(
             currentTimeRenderer
@@ -457,33 +468,169 @@ final class VirtualMapScene:
         )
 
 
+        selectionLayer.addChild(
+            roadSelectionRenderer
+                .containerNode
+        )
+    }
+}
+
+// =====================================================
+// MARK: - Coordinate Grid
+// =====================================================
+
+private extension VirtualMapScene {
+
+    func configureCoordinateGrid() {
+
+        gridRenderer.rebuild()
+    }
+}
+
+
+// =====================================================
+// MARK: - Road Network
+// =====================================================
+
+private extension VirtualMapScene {
+
+    func configureRoadNetwork() {
+
+        roadRenderer.render(
+            graph:
+                roadGraph
+        )
+    }
+}
+
+
+// =====================================================
+// MARK: - Game Nodes
+// =====================================================
+
+private extension VirtualMapScene {
+
+    func configureGameNodes() {
+
+        gameNodeRenderer.render(
+            nodes:
+                gameNodes,
+            roadGraph:
+                roadGraph
+        )
+    }
+}
+
+
+// =====================================================
+// MARK: - Current Time
+// =====================================================
+
+private extension VirtualMapScene {
+
+    func configureCurrentTimeIndicator() {
+
         currentTimeRenderer.render(
             time:
                 currentTime
         )
     }
+}
 
+// =====================================================
+// MARK: - Game Node API
+// =====================================================
 
-    // MARK: - Diagnostics
+extension VirtualMapScene {
 
-    private func configureDiagnostics() {
-
-        drawWorldBoundary()
-
-
-        drawCenterReferencePoint()
-    }
-    
-    func renderRoadSelection(
-        _ selection:
-            SelectionState
+    func renderGameNodes(
+        _ nodes:
+            [GameMapNode]
     ) {
 
-        guard hasConfiguredScene else {
+        gameNodes =
+            nodes
+
+
+        gameNodeRenderer.render(
+            nodes:
+                gameNodes,
+            roadGraph:
+                roadGraph
+        )
+
+
+        gameNodeRenderer
+            .renderSelection(
+                selectedNodeID:
+                    currentSelection
+                        .selectedNodeID
+            )
+    }
+}
+
+// =====================================================
+// MARK: - Current Time API
+// =====================================================
+
+extension VirtualMapScene {
+
+    func renderCurrentTime(
+        _ time:
+            DayTime
+    ) {
+
+        currentTime =
+            time
+
+
+        currentTimeRenderer.render(
+            time:
+                time
+        )
+    }
+
+
+    func centerCameraOnCurrentTime(
+        animated:
+            Bool = true
+    ) {
+
+        guard let view else {
 
             return
         }
 
+
+        cameraController.center(
+            on:
+                currentTime,
+            in:
+                self,
+            view:
+                view,
+            animated:
+                animated
+        )
+    }
+}
+
+// =====================================================
+// MARK: - Selection API
+// =====================================================
+
+extension VirtualMapScene {
+
+    func renderSelection(
+        _ selection:
+            SelectionState
+    ) {
+
+        currentSelection =
+            selection
+
+
+        // MARK: Roads
 
         roadSelectionRenderer
             .render(
@@ -494,18 +641,40 @@ final class VirtualMapScene:
                 roadRenderer:
                     roadRenderer
             )
+
+
+        // MARK: Game Nodes
+
+        gameNodeRenderer
+            .renderSelection(
+                selectedNodeID:
+                    selection
+                        .selectedNodeID
+            )
     }
 }
 
-
-// MARK: - World Diagnostics
+// =====================================================
+// MARK: - Diagnostics
+// =====================================================
 
 private extension VirtualMapScene {
+
+    func configureDiagnostics() {
+
+        debugLayer
+            .removeAllChildren()
+
+
+        drawWorldBoundary()
+
+        drawCenterReferencePoint()
+    }
+
 
     func drawWorldBoundary() {
 
         drawExplorationBoundary()
-
 
         drawReferenceProgressBoundary()
     }
@@ -518,16 +687,15 @@ private extension VirtualMapScene {
                 x:
                     MapWorldConfiguration
                         .minimumExplorableX,
-
                 y:
-                    -MapWorldConfiguration.height,
-
+                    -MapWorldConfiguration
+                        .height,
                 width:
                     MapWorldConfiguration
                         .explorableWorldWidth,
-
                 height:
-                    MapWorldConfiguration.height
+                    MapWorldConfiguration
+                        .height
             )
 
 
@@ -564,17 +732,16 @@ private extension VirtualMapScene {
 
         let rect =
             CGRect(
-                x:
-                    0,
-
+                x: 0,
                 y:
-                    -MapWorldConfiguration.height,
-
+                    -MapWorldConfiguration
+                        .height,
                 width:
-                    MapWorldConfiguration.width,
-
+                    MapWorldConfiguration
+                        .width,
                 height:
-                    MapWorldConfiguration.height
+                    MapWorldConfiguration
+                        .height
             )
 
 
@@ -590,10 +757,8 @@ private extension VirtualMapScene {
 
 
         boundary.strokeColor =
-            SKColor.white
-                .withAlphaComponent(
-                    0.25
-                )
+            MapVisualTheme
+                .referenceBoundaryColor
 
 
         boundary.lineWidth =
@@ -701,7 +866,9 @@ private extension VirtualMapScene {
     }
 }
 
+// =====================================================
 // MARK: - Touch Handling
+// =====================================================
 
 extension VirtualMapScene {
 
@@ -724,12 +891,18 @@ extension VirtualMapScene {
                 .allTouches?
                 .filter {
 
-                    $0.phase != .ended
+                    $0.phase !=
+                        .ended
+
                     &&
-                    $0.phase != .cancelled
+
+                    $0.phase !=
+                        .cancelled
                 }
                 .count
-            ?? touches.count
+
+            ??
+            touches.count
 
 
         gestureContainsMultipleTouches =
@@ -742,14 +915,13 @@ extension VirtualMapScene {
 
 
         /*
-         Touching a coasting map grabs it
-         immediately.
+         Touching a coasting map immediately
+         grabs/stops the map.
          */
 
         cameraController
             .cancelMomentum()
     }
-
 
     override func touchesEnded(
         _ touches:
@@ -767,14 +939,13 @@ extension VirtualMapScene {
 
         defer {
 
-            touchBeganWhileMomentumWasActive =
-                false
-
-
-            gestureContainsMultipleTouches =
-                false
+            resetTouchState()
         }
 
+
+        // =========================================
+        // Touch was used to stop momentum
+        // =========================================
 
         guard
             !touchBeganWhileMomentumWasActive
@@ -783,6 +954,10 @@ extension VirtualMapScene {
             return
         }
 
+
+        // =========================================
+        // Ignore camera gestures
+        // =========================================
 
         guard
             !gestureContainsMultipleTouches,
@@ -794,14 +969,18 @@ extension VirtualMapScene {
         }
 
 
-        guard
-            let touch =
-                touches.first
+        // =========================================
+        // Semantic Tap
+        // =========================================
+
+        guard let touch =
+            touches.first
         else {
 
             return
         }
-        
+
+
         emitSemanticTap(
             for:
                 touch
@@ -823,6 +1002,20 @@ extension VirtualMapScene {
         )
 
 
+        resetTouchState()
+    }
+    
+    
+}
+
+// =====================================================
+// MARK: - Touch State
+// =====================================================
+
+private extension VirtualMapScene {
+
+    func resetTouchState() {
+
         touchBeganWhileMomentumWasActive =
             false
 
@@ -832,128 +1025,163 @@ extension VirtualMapScene {
     }
 }
 
-
-    // MARK: - Semantic Hit Testing
+// =====================================================
+// MARK: - Semantic Hit Testing
+// =====================================================
 
 private extension VirtualMapScene {
-    
+
     func emitSemanticTap(
         for touch:
-        UITouch
+            UITouch
     ) {
-        
+
         let point =
-        touch.location(
-            in:
-                self
-        )
-        
-        
+            touch.location(
+                in:
+                    self
+            )
+
+
         let worldPoint =
-        WorldPoint(
-            x:
-                point.x,
-            y:
-                point.y
-        )
-        
-        
+            WorldPoint(
+                x:
+                    point.x,
+                y:
+                    point.y
+            )
+
+
         let mapCoordinate =
-        MapCoordinateConverter
-            .mapCoordinate(
-                for:
-                    worldPoint
-            )
-        
-        
+            MapCoordinateConverter
+                .mapCoordinate(
+                    for:
+                        worldPoint
+                )
+
+
         let tolerance =
-        worldHitTolerance(
-            touch:
-                touch,
-            screenPoints:
-                18
-        )
-        
-        
-        let hit =
-        roadHitTester
-            .hitTest(
-                at:
-                    point,
-                graph:
-                    roadGraph,
-                tolerance:
-                    tolerance
+            worldHitTolerance(
+                touch:
+                    touch,
+                screenPoints:
+                    18
             )
-        
-        
-        switch hit {
-            
-            // =========================================
-            // Intersection / Vertex
-            // =========================================
-            
+
+
+        // =========================================
+        // 1. Game Node
+        // =========================================
+
+        if let nodeID =
+            gameNodeHitTester
+                .hitTest(
+                    at:
+                        point,
+                    nodes:
+                        gameNodes,
+                    roadGraph:
+                        roadGraph,
+                    tolerance:
+                        tolerance
+                )
+        {
+
+            emit(
+                .gameNodeTapped(
+                    nodeID:
+                        nodeID,
+                    worldPoint:
+                        worldPoint,
+                    mapCoordinate:
+                        mapCoordinate
+                )
+            )
+
+
+            return
+        }
+
+
+        // =========================================
+        // 2. Road Geometry
+        // =========================================
+
+        let roadHit =
+            roadHitTester
+                .hitTest(
+                    at:
+                        point,
+                    graph:
+                        roadGraph,
+                    tolerance:
+                        tolerance
+                )
+
+
+        switch roadHit {
+
         case let .vertex(
             vertexID
         ):
-            
-            interactionDelegate?
-                .sceneDidEmit(
-                    
-                    .roadVertexTapped(
-                        vertexID:
-                            vertexID,
-                        worldPoint:
-                            worldPoint,
-                        mapCoordinate:
-                            mapCoordinate
-                    )
+
+            emit(
+                .roadVertexTapped(
+                    vertexID:
+                        vertexID,
+                    worldPoint:
+                        worldPoint,
+                    mapCoordinate:
+                        mapCoordinate
                 )
-            
-            
-            // =========================================
-            // Road
-            // =========================================
-            
+            )
+
+
         case let .edge(
             edgeID
         ):
-            
-            interactionDelegate?
-                .sceneDidEmit(
-                    
-                    .roadEdgeTapped(
-                        edgeID:
-                            edgeID,
-                        worldPoint:
-                            worldPoint,
-                        mapCoordinate:
-                            mapCoordinate
-                    )
+
+            emit(
+                .roadEdgeTapped(
+                    edgeID:
+                        edgeID,
+                    worldPoint:
+                        worldPoint,
+                    mapCoordinate:
+                        mapCoordinate
                 )
-            
-            
-            // =========================================
-            // Background
-            // =========================================
-            
+            )
+
+
         case nil:
-            
-            interactionDelegate?
-                .sceneDidEmit(
-                    
-                    .backgroundTapped(
-                        worldPoint:
-                            worldPoint,
-                        mapCoordinate:
-                            mapCoordinate
-                    )
+
+            emit(
+                .backgroundTapped(
+                    worldPoint:
+                        worldPoint,
+                    mapCoordinate:
+                        mapCoordinate
                 )
+            )
         }
+    }
+
+
+    func emit(
+        _ interaction:
+            SceneInteraction
+    ) {
+
+        interactionDelegate?
+            .sceneDidEmit(
+                interaction
+            )
     }
 }
 
+// =====================================================
 // MARK: - Screen -> World Hit Tolerance
+// =====================================================
 
 private extension VirtualMapScene {
 
@@ -992,7 +1220,6 @@ private extension VirtualMapScene {
                             viewPoint.x
                             +
                             screenPoints,
-
                         y:
                             viewPoint.y
                     )
@@ -1005,7 +1232,6 @@ private extension VirtualMapScene {
                     CGPoint(
                         x:
                             viewPoint.x,
-
                         y:
                             viewPoint.y
                             +
@@ -1019,7 +1245,6 @@ private extension VirtualMapScene {
                 horizontal.x
                 -
                 origin.x,
-
                 horizontal.y
                 -
                 origin.y
@@ -1031,7 +1256,6 @@ private extension VirtualMapScene {
                 vertical.x
                 -
                 origin.x,
-
                 vertical.y
                 -
                 origin.y
@@ -1044,3 +1268,4 @@ private extension VirtualMapScene {
         )
     }
 }
+

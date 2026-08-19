@@ -72,6 +72,23 @@ struct SelectionState:
         selectedRouteID =
             nil
     }
+    
+    mutating func selectGameNode(
+        _ id: GameNodeID
+    ) {
+
+        selectedNodeID =
+            id
+
+        selectedRoadEdgeID =
+            nil
+
+        selectedRoadVertexID =
+            nil
+
+        selectedRouteID =
+            nil
+    }
 
 
     mutating func clear() {
@@ -88,4 +105,6 @@ struct SelectionState:
         selectedRoadVertexID =
             nil
     }
+    
+    
 }

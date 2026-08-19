@@ -30,6 +30,13 @@ enum SceneInteraction:
         worldPoint: WorldPoint,
         mapCoordinate: MapCoordinate
     )
+    
+    case gameNodeTapped(
+        nodeID: GameNodeID,
+        worldPoint: WorldPoint,
+        mapCoordinate: MapCoordinate
+    )
+    
 }
 
 

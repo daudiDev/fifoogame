@@ -120,4 +120,41 @@ enum MapVisualTheme {
             blue: 246 / 255,
             alpha: 0.38
         )
+    
+    
+    // MARK: - Game Nodes
+    static let nodeFillColor =
+        SKColor(
+            red: 216 / 255,
+            green: 226 / 255,
+            blue: 236 / 255,
+            alpha: 1
+        )
+
+
+    static let nodeBorderColor =
+        SKColor(
+            red: 153 / 255,
+            green: 174 / 255,
+            blue: 195 / 255,
+            alpha: 1
+        )
+
+
+    static let nodeTextColor =
+        SKColor(
+            red: 41 / 255,
+            green: 57 / 255,
+            blue: 75 / 255,
+            alpha: 1
+        )
+
+
+    static let nodeLabelColor =
+        SKColor(
+            red: 224 / 255,
+            green: 232 / 255,
+            blue: 240 / 255,
+            alpha: 0.95
+        )
 }
