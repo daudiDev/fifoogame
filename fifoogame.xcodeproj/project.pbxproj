@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		278C62F93034EFC900E5F340 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 278C62BF3034DC7200E5F340 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 278C62C63034DC7200E5F340;
+			remoteInfo = fifoogame;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		278C62C73034DC7200E5F340 /* fifoogame.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = fifoogame.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		278C62F53034EFC900E5F340 /* fifoogameTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = fifoogameTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +27,22 @@
 			path = fifoogame;
 			sourceTree = "<group>";
 		};
+		278C62F63034EFC900E5F340 /* fifoogameTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = fifoogameTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		278C62C43034DC7200E5F340 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		278C62F23034EFC900E5F340 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				278C62C93034DC7200E5F340 /* fifoogame */,
+				278C62F63034EFC900E5F340 /* fifoogameTests */,
 				278C62C83034DC7200E5F340 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				278C62C73034DC7200E5F340 /* fifoogame.app */,
+				278C62F53034EFC900E5F340 /* fifoogameTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 			productReference = 278C62C73034DC7200E5F340 /* fifoogame.app */;
 			productType = "com.apple.product-type.application";
 		};
+		278C62F43034EFC900E5F340 /* fifoogameTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 278C62FB3034EFC900E5F340 /* Build configuration list for PBXNativeTarget "fifoogameTests" */;
+			buildPhases = (
+				278C62F13034EFC900E5F340 /* Sources */,
+				278C62F23034EFC900E5F340 /* Frameworks */,
+				278C62F33034EFC900E5F340 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				278C62FA3034EFC900E5F340 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				278C62F63034EFC900E5F340 /* fifoogameTests */,
+			);
+			name = fifoogameTests;
+			packageProductDependencies = (
+			);
+			productName = fifoogameTests;
+			productReference = 278C62F53034EFC900E5F340 /* fifoogameTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +130,10 @@
 				TargetAttributes = {
 					278C62C63034DC7200E5F340 = {
 						CreatedOnToolsVersion = 26.4.1;
+					};
+					278C62F43034EFC900E5F340 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = 278C62C63034DC7200E5F340;
 					};
 				};
 			};
@@ -100,12 +152,20 @@
 			projectRoot = "";
 			targets = (
 				278C62C63034DC7200E5F340 /* fifoogame */,
+				278C62F43034EFC900E5F340 /* fifoogameTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		278C62C53034DC7200E5F340 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		278C62F33034EFC900E5F340 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +182,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		278C62F13034EFC900E5F340 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		278C62FA3034EFC900E5F340 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 278C62C63034DC7200E5F340 /* fifoogame */;
+			targetProxy = 278C62F93034EFC900E5F340 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		278C62D03034DC7400E5F340 /* Debug */ = {
@@ -310,6 +385,56 @@
 			};
 			name = Release;
 		};
+		278C62FC3034EFC900E5F340 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JH9RVESMJJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "fifoo-app.fifoogameTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fifoogame.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fifoogame";
+			};
+			name = Debug;
+		};
+		278C62FD3034EFC900E5F340 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JH9RVESMJJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "fifoo-app.fifoogameTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fifoogame.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fifoogame";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -327,6 +452,15 @@
 			buildConfigurations = (
 				278C62D33034DC7400E5F340 /* Debug */,
 				278C62D43034DC7400E5F340 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		278C62FB3034EFC900E5F340 /* Build configuration list for PBXNativeTarget "fifoogameTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				278C62FC3034EFC900E5F340 /* Debug */,
+				278C62FD3034EFC900E5F340 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
