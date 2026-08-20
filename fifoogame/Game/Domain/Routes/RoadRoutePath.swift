@@ -15,10 +15,6 @@ struct RoadRoutePath:
     Hashable,
     Sendable {
 
-    // =====================================================
-    // MARK: - Endpoints
-    // =====================================================
-
     let startLocation:
         GameNodeRouteAnchor.RoadLocation
 
@@ -27,52 +23,36 @@ struct RoadRoutePath:
         GameNodeRouteAnchor.RoadLocation
 
 
-    // =====================================================
-    // MARK: - Graph Path
-    // =====================================================
-
-    /// Ordered vertices traversed by the path.
+    /// Vertices reached between route segments.
     var vertexIDs:
         [RoadVertexID]
 
 
-    /// Ordered road edges traversed by the path.
-    var edgeIDs:
-        [RoadEdgeID]
+    /// Actual ordered traversal.
+    var segments:
+        [RoadRouteSegment]
 
 
-    // =====================================================
-    // MARK: - Cost
-    // =====================================================
-
-    /// Routing cost produced by the route planner.
-    ///
-    /// This does not have to equal physical distance.
     var totalCost:
         Double
 
 
-    init(
-        startLocation: GameNodeRouteAnchor.RoadLocation,
-        endLocation: GameNodeRouteAnchor.RoadLocation,
-        vertexIDs: [RoadVertexID],
-        edgeIDs: [RoadEdgeID],
-        totalCost: Double
-    ) {
+    // =====================================================
+    // MARK: - Convenience
+    // =====================================================
 
-        self.startLocation =
-            startLocation
+    var edgeIDs:
+        [RoadEdgeID] {
 
-        self.endLocation =
-            endLocation
+        segments.map(
+            \.edgeID
+        )
+    }
 
-        self.vertexIDs =
-            vertexIDs
 
-        self.edgeIDs =
-            edgeIDs
+    var isEmpty:
+        Bool {
 
-        self.totalCost =
-            totalCost
+        segments.isEmpty
     }
 }

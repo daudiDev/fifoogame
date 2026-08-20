@@ -37,7 +37,22 @@ enum SceneInteraction:
         mapCoordinate: MapCoordinate
     )
     
+    // =================================================
+    // Route
+    // =================================================
+
+    case routeTapped(
+        target:
+            RouteInteractionTarget,
+        worldPoint:
+            WorldPoint,
+        mapCoordinate:
+            MapCoordinate
+    )
+    
 }
+
+
 
 
 @MainActor

@@ -108,9 +108,34 @@ struct GameNodeRoadRelationshipResolver {
             edgeID
         ):
 
+            guard
+                let edge =
+                    graph.edge(
+                        id:
+                            edgeID
+                    ),
+
+                let projection =
+                    RoadEdgeGeometry
+                        .projection(
+                            of:
+                                worldPoint,
+                            onto:
+                                edge,
+                            graph:
+                                graph
+                        )
+            else {
+
+                return .offRoad
+            }
+
+
             return .edge(
                 edgeID:
-                    edgeID
+                    edgeID,
+                fraction:
+                    projection.fraction
             )
 
 

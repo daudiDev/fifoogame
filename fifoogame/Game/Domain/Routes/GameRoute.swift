@@ -150,3 +150,167 @@ extension GameRoute {
         )
     }
 }
+
+
+extension GameRoute {
+
+    // =====================================================
+    // MARK: - Planned Cost
+    // =====================================================
+
+    var plannedTotalCost:
+        Double? {
+
+        guard
+            isFullyPlanned
+        else {
+
+            return nil
+        }
+
+
+        return legs.reduce(
+            0
+        ) { result, leg in
+
+            result
+            +
+            (
+                leg.path?
+                    .totalCost
+                ??
+                0
+            )
+        }
+    }
+}
+
+extension GameRoute {
+
+    var orderedUniqueRoadEdgeIDs:
+        [RoadEdgeID] {
+
+        var seen =
+            Set<RoadEdgeID>()
+
+
+        var result:
+            [RoadEdgeID] = []
+
+
+        for leg in legs {
+
+            guard let path =
+                leg.path
+            else {
+
+                continue
+            }
+
+
+            for segment in
+                path.segments {
+
+                if
+                    seen
+                        .insert(
+                            segment.edgeID
+                        )
+                        .inserted
+                {
+
+                    result.append(
+                        segment.edgeID
+                    )
+                }
+            }
+        }
+
+
+        return result
+    }
+}
+
+extension GameRoute {
+
+    var plannedPathSignature:
+        String? {
+
+        guard
+            isFullyPlanned
+        else {
+
+            return nil
+        }
+
+
+        return legs
+            .map { leg in
+
+                let segmentSignature =
+                    leg.path?
+                        .segments
+                        .map { segment in
+
+                            let from =
+                                Int(
+                                    (
+                                        segment
+                                            .fromFraction
+                                        *
+                                        1_000_000
+                                    )
+                                    .rounded()
+                                )
+
+
+                            let to =
+                                Int(
+                                    (
+                                        segment
+                                            .toFraction
+                                        *
+                                        1_000_000
+                                    )
+                                    .rounded()
+                                )
+
+
+                            return """
+                            \(segment.edgeID.rawValue):\(from)->\(to)
+                            """
+                        }
+                        .joined(
+                            separator:
+                                ","
+                        )
+                    ??
+                    ""
+
+
+                return """
+                \(leg.fromNodeID.rawValue.uuidString)->\(leg.toNodeID.rawValue.uuidString)[\(segmentSignature)]
+                """
+            }
+            .joined(
+                separator:
+                    "||"
+            )
+    }
+}
+
+extension GameRoute {
+
+    func withNewRouteID()
+        -> GameRoute {
+
+        GameRoute(
+            id:
+                RouteID(),
+            stopNodeIDs:
+                stopNodeIDs,
+            legs:
+                legs
+        )
+    }
+}

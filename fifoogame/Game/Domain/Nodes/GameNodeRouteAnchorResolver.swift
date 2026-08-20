@@ -126,7 +126,8 @@ struct GameNodeRouteAnchorResolver {
         // =============================================
 
         case let .edge(
-            edgeID
+            edgeID,
+            fraction
         ):
 
             guard
@@ -141,7 +142,6 @@ struct GameNodeRouteAnchorResolver {
                 return nil
             }
 
-
             return GameNodeRouteAnchor(
                 nodeID:
                     node.id,
@@ -149,7 +149,10 @@ struct GameNodeRouteAnchorResolver {
                     nodeCoordinate,
                 roadLocation:
                     .edge(
-                        edgeID
+                        edgeID:
+                            edgeID,
+                        fraction:
+                            fraction
                     )
             )
         }

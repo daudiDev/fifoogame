@@ -58,6 +58,9 @@ final class VirtualMapScene: SKScene {
 
     private let debugLayer =
         SKNode()
+    
+    private let gameNodeLayer =
+        SKNode()
 
 
     // =====================================================
@@ -82,6 +85,13 @@ final class VirtualMapScene: SKScene {
 
     private let gameNodeRenderer =
         GameNodeRenderer()
+    
+    private let routeRenderer =
+        RouteLayerRenderer()
+    
+    private var currentRouteRenderState:
+        RouteRenderState =
+            .empty
 
 
     // =====================================================
@@ -94,6 +104,9 @@ final class VirtualMapScene: SKScene {
 
     private let gameNodeHitTester =
         GameNodeHitTester()
+    
+    private let routeHitTester =
+        RouteHitTester()
 
 
     // =====================================================
@@ -196,6 +209,29 @@ final class VirtualMapScene: SKScene {
 
 
         commonInit()
+    }
+    
+    // =====================================================
+    // MARK: - Route Rendering
+    // =====================================================
+
+    func renderRoutes(
+        _ state:
+            RouteRenderState
+    ) {
+
+        currentRouteRenderState =
+            state
+
+
+        routeRenderer.render(
+            state,
+            graph:
+                roadGraph,
+            selectedRouteID:
+                currentSelection
+                    .selectedRouteID
+        )
     }
 
     
@@ -454,6 +490,11 @@ private extension VirtualMapScene {
             roadRenderer
                 .containerNode
         )
+        
+        routeRenderer.attach(
+              to:
+                  routeLayer
+        )
 
 
         nodeLayer.addChild(
@@ -626,31 +667,59 @@ extension VirtualMapScene {
             SelectionState
     ) {
 
+        // =================================================
+        // Store Current Selection
+        // =================================================
+
         currentSelection =
             selection
 
 
-        // MARK: Roads
+        // =================================================
+        // Road Edge / Vertex Selection
+        // =================================================
 
-        roadSelectionRenderer
-            .render(
-                selection:
-                    selection,
-                graph:
-                    roadGraph,
-                roadRenderer:
-                    roadRenderer
-            )
+        roadSelectionRenderer.render(
+            selection:
+                selection,
+            graph:
+                roadGraph,
+            roadRenderer:
+                roadRenderer
+        )
 
 
-        // MARK: Game Nodes
+        // =================================================
+        // Game Node Selection
+        // =================================================
 
-        gameNodeRenderer
-            .renderSelection(
-                selectedNodeID:
-                    selection
-                        .selectedNodeID
-            )
+        refreshGameNodeRendering()
+
+
+        // =================================================
+        // Route Selection
+        // =================================================
+
+        routeRenderer.render(
+            currentRouteRenderState,
+            graph:
+                roadGraph,
+            selectedRouteID:
+                selection
+                    .selectedRouteID
+        )
+    }
+}
+
+private extension VirtualMapScene {
+
+    func refreshGameNodeRendering() {
+
+        gameNodeRenderer.render(
+            nodes:
+                gameNodes,
+            roadGraph: roadGraph
+        )
     }
 }
 
@@ -1091,6 +1160,38 @@ private extension VirtualMapScene {
                 .gameNodeTapped(
                     nodeID:
                         nodeID,
+                    worldPoint:
+                        worldPoint,
+                    mapCoordinate:
+                        mapCoordinate
+                )
+            )
+
+
+            return
+        }
+        
+        // =====================================================
+        // 2. ROUTE
+        // =====================================================
+
+        if let routeTarget =
+            routeHitTester.hitTest(
+                at:
+                    point,
+                state:
+                    currentRouteRenderState,
+                graph:
+                    roadGraph,
+                tolerance:
+                    tolerance
+            )
+        {
+
+            emit(
+                .routeTapped(
+                    target:
+                        routeTarget,
                     worldPoint:
                         worldPoint,
                     mapCoordinate:

@@ -12,33 +12,49 @@ struct DayRouteState:
     Equatable,
     Sendable {
 
-    /// The route already traveled by the user.
-    ///
-    /// It starts empty at the beginning of the day
-    /// and grows as route progress is completed.
+    // =====================================================
+    // MARK: - Past
+    // =====================================================
+
+    /// Frozen route history.
     var completedRoute:
-        GameRoute
+        CompletedRoute
 
 
-    /// The currently chosen future route.
-    ///
-    /// It starts empty until a route is selected.
+    // =====================================================
+    // MARK: - Future
+    // =====================================================
+
     var chosenFutureRoute:
         GameRoute
 
 
-    /// Other viable future routes.
     var alternativeRoutes:
         [GameRoute]
 
 
+    /// Time at which this chosen route became active.
+    ///
+    /// This prevents a route selected at 3 PM from
+    /// retroactively becoming "completed" between
+    /// 8 AM and 3 PM.
+    var chosenFutureRouteActivatedAt:
+        DayTime?
+
+
+    // =====================================================
+    // MARK: - Init
+    // =====================================================
+
     init(
         completedRoute:
-            GameRoute = GameRoute(),
+            CompletedRoute = CompletedRoute(),
         chosenFutureRoute:
             GameRoute = GameRoute(),
         alternativeRoutes:
-            [GameRoute] = []
+            [GameRoute] = [],
+        chosenFutureRouteActivatedAt:
+            DayTime? = nil
     ) {
 
         self.completedRoute =
@@ -49,18 +65,13 @@ struct DayRouteState:
 
         self.alternativeRoutes =
             alternativeRoutes
+
+        self.chosenFutureRouteActivatedAt =
+            chosenFutureRouteActivatedAt
     }
 }
 
 extension DayRouteState {
-
-    var hasChosenFutureRoute:
-        Bool {
-
-        !chosenFutureRoute
-            .isEmpty
-    }
-
 
     var hasCompletedRoute:
         Bool {
@@ -70,10 +81,29 @@ extension DayRouteState {
     }
 
 
+    var hasChosenFutureRoute:
+        Bool {
+
+        !chosenFutureRoute
+            .isEmpty
+    }
+
+
+    var hasAlternatives:
+        Bool {
+
+        !alternativeRoutes
+            .isEmpty
+    }
+
+
     var allFutureRoutes:
         [GameRoute] {
 
-        if chosenFutureRoute.isEmpty {
+        guard
+            !chosenFutureRoute
+                .isEmpty
+        else {
 
             return alternativeRoutes
         }

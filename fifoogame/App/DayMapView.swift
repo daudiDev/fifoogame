@@ -28,6 +28,9 @@ struct DayMapView: View {
     private var presentedMediaNodeID:
         GameNodeID?
 
+    @State
+    private var presentedRouteTarget:
+        RouteInteractionTarget?
 
     // MARK: - State
 
@@ -210,6 +213,13 @@ struct DayMapView: View {
                     false
             }
         }
+        
+        .sheet(
+            item:
+                $presentedRouteTarget,
+            content:
+                routeInspectorSheet
+        )
 
         // MARK: - Appear
 
@@ -230,6 +240,20 @@ struct DayMapView: View {
                 store.selection
             )
             
+            scene.renderRoutes(
+                store.routeRenderState
+            )
+            
+            print("Chosen empty:", store.routeState.chosenFutureRoute.isEmpty)
+            print("Chosen planned:", store.routeState.chosenFutureRoute.isFullyPlanned)
+            print("Chosen segments:",
+                  store.routeRenderState.chosenFuture?.segments.count ?? 0)
+
+            print("Alternatives:",
+                  store.routeRenderState.alternatives.count)
+
+            print("Completed:",
+                  store.routeRenderState.completedSegments.count)
 
         }
 
@@ -299,7 +323,7 @@ struct DayMapView: View {
                 newSelection
             )
         }
-        
+
         .onChange(
             of:
                 store.gameNodes
@@ -325,6 +349,34 @@ struct DayMapView: View {
                 newAction
             )
         }
+        
+        .onChange(
+            of:
+                store.routeState
+        ) { _, _ in
+
+            scene.renderRoutes(
+                store.routeRenderState
+            )
+        }
+        
+        .onChange(
+            of:
+                store.currentDayTime
+        ) { _, _ in
+
+            scene.renderRoutes(
+                store.routeRenderState
+            )
+        }
+        
+        .onChange(
+            of:
+                store.pendingRouteAction,
+            initial:
+                false,
+            pendingRouteActionDidChange
+        )
         
         .sheet(
             item:
@@ -442,22 +494,13 @@ private extension DayMapView {
                 ) {
 
                     Text(
-                        "Fifoo"
+                        "Fifoo Game"
                     )
                     .font(
                         .headline
                     )
 
-
-                    Text(
-                        "Section 4A • Interactive Nodes"
-                    )
-                    .font(
-                        .caption
-                    )
-                    .foregroundStyle(
-                        .secondary
-                    )
+                    
                 }
 
 
@@ -567,6 +610,11 @@ private extension DayMapView {
                  .gameNodeTapped:
 
                 EmptyView()
+            
+            case .routeTapped:
+
+                EmptyView()
+                
             }
         }
     }
@@ -843,5 +891,120 @@ private extension DayMapView {
 
 
         store.consumePendingNodeAction()
+    }
+}
+
+private extension DayMapView {
+
+    func pendingRouteActionDidChange(
+        _ oldAction:
+            RouteAction?,
+        _ newAction:
+            RouteAction?
+    ) {
+
+        guard let newAction else {
+            return
+        }
+
+
+        switch newAction {
+
+        case .inspectCompleted:
+
+            presentedRouteTarget =
+                .completed
+
+
+        case let .inspectChosen(
+            routeID
+        ):
+
+            presentedRouteTarget =
+                .chosen(
+                    routeID:
+                        routeID
+                )
+
+
+        case let .inspectAlternative(
+            routeID
+        ):
+
+            presentedRouteTarget =
+                .alternative(
+                    routeID:
+                        routeID
+                )
+        }
+
+
+        store.consumePendingRouteAction()
+    }
+}
+
+private extension DayMapView {
+
+    @ViewBuilder
+    func routeInspectorSheet(
+        target:
+            RouteInteractionTarget
+    ) -> some View {
+
+        RouteInspectorView(
+            target:
+                target,
+
+            chosenRoute:
+                store.routeState
+                    .chosenFutureRoute,
+
+            inspectedRoute:
+                inspectedFutureRoute(
+                    for:
+                        target
+                ),
+
+            completedRoute:
+                store.routeState
+                    .completedRoute,
+
+            onChoose:
+                chooseRoute
+        )
+    }
+}
+
+private extension DayMapView {
+
+    func inspectedFutureRoute(
+        for target:
+            RouteInteractionTarget
+    ) -> GameRoute? {
+
+        guard let routeID =
+            target.routeID
+        else {
+
+            return nil
+        }
+
+
+        return store.futureRoute(
+            id:
+                routeID
+        )
+    }
+
+
+    func chooseRoute(
+        _ routeID:
+            RouteID
+    ) -> Bool {
+
+        store.chooseFutureRoute(
+            routeID:
+                routeID
+        )
     }
 }

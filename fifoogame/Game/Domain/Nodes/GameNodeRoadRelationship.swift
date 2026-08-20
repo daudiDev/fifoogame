@@ -27,9 +27,10 @@ enum GameNodeRoadRelationship:
 
     /// The node lies on / sufficiently close to
     /// an actual road segment.
+    
     case edge(
-        edgeID:
-            RoadEdgeID
+        edgeID: RoadEdgeID,
+        fraction: Double
     )
 }
 

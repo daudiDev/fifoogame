@@ -22,8 +22,14 @@ struct GameNodeRouteAnchor:
             RoadVertexID
         )
 
+
+        /// Fraction follows the edge's canonical
+        /// fromID -> toID geometry.
         case edge(
-            RoadEdgeID
+            edgeID:
+                RoadEdgeID,
+            fraction:
+                Double
         )
     }
 
@@ -32,7 +38,7 @@ struct GameNodeRouteAnchor:
         GameNodeID
 
 
-    /// The node's ACTUAL location on the
+    /// Actual location of the node on the
     /// time/progress plane.
     let nodeCoordinate:
         MapCoordinate

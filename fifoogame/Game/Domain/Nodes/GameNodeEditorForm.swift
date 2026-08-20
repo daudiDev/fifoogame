@@ -2533,55 +2533,79 @@ private extension GameNodeEditorForm {
             // Road Edge
             // =========================================
 
-            case let .edge(
-                edgeID
-            ):
+                // =========================================
+                // Road Edge
+                // =========================================
 
-                Label(
-                    "On Road",
-                    systemImage:
-                        "road.lanes"
-                )
-                .foregroundStyle(
-                    .green
-                )
+                case let .edge(
+                    edgeID,
+                    fraction
+                ):
 
-
-                if let edge =
-                    roadGraph.edge(
-                        id:
-                            edgeID
+                    Label(
+                        "On Road",
+                        systemImage:
+                            "road.lanes"
                     )
-                {
-
-                    LabeledContent(
-                        "Road",
-                        value:
-                            edge.attributes
-                                .displayName
-                            ??
-                            "Unnamed Road"
+                    .foregroundStyle(
+                        .green
                     )
 
 
-                    LabeledContent(
-                        "Class",
-                        value:
-                            edge.roadClass
-                                .rawValue
-                                .capitalized
-                    )
+                    if let edge =
+                        roadGraph.edge(
+                            id:
+                                edgeID
+                        )
+                    {
+
+                        LabeledContent(
+                            "Road",
+                            value:
+                                edge.attributes
+                                    .displayName
+                                ??
+                                "Unnamed Road"
+                        )
 
 
-                    LabeledContent(
-                        "Traversable",
-                        value:
-                            edge.attributes
-                                .isTraversable
-                            ? "Yes"
-                            : "No"
-                    )
-                }
+                        LabeledContent(
+                            "Class",
+                            value:
+                                edge.roadClass
+                                    .rawValue
+                                    .capitalized
+                        )
+
+
+                        LabeledContent(
+                            "Traversable",
+                            value:
+                                edge.attributes
+                                    .isTraversable
+                                ? "Yes"
+                                : "No"
+                        )
+
+
+                        LabeledContent(
+                            "Road Position"
+                        ) {
+
+                            Text(
+                                fraction * 100,
+                                format:
+                                    .number
+                                    .precision(
+                                        .fractionLength(
+                                            1
+                                        )
+                                    )
+                            )
+
+                            Text("%")
+                        }
+                    }
             }
 
 
