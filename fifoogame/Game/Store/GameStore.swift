@@ -40,12 +40,6 @@ final class GameStore:
     SelectionState()
     
     
-    // MARK: - Current Time
-    
-    @Published
-    private(set) var currentDayTime:
-    DayTime
-    
     
     @Published
     private(set) var routeState =
@@ -73,10 +67,98 @@ final class GameStore:
     private(set) var pendingRouteAction:
     RouteAction?
     
-    // MARK: - Clock
+    @Published
+    private(set) var futureRouteDraftPlan:
+        FutureRouteDraftPlanningResult?
     
+    @Published
+    private(set) var futureRoutePreview:
+        FutureRoutePreview?
+    
+    // =====================================================
+    // MARK: - Game Clock
+    // =====================================================
+
+    @Published
+    private(set) var currentDayTime:
+        DayTime =
+            DayTime.from(
+                date: Date(),
+                timeZone: .current
+            )
+
+
+    @Published
+    private(set) var currentGameDayID =
+        GameDayID()
+
+
+    @Published
+    private(set) var currentCalendarDay =
+        CalendarDayKey(
+            date: Date(),
+            timeZone: .current
+        )
+
+
+    @Published
+    private(set) var currentClockDate =
+        Date()
+
+
+    @Published
+    private(set) var gameClockMode:
+        GameClockMode =
+            .realTime
+
+
+    @Published
+    private(set) var isGameClockRunning =
+        false
+
+
+    @Published
+    private(set) var isSimulationPaused =
+        false
+
+
+    @Published
+    private(set) var simulationSpeed:
+        Double = 60
+
+
+    @Published
+    private(set) var clockTimeZoneIdentifier =
+        TimeZone.current.identifier
+
+
+    @Published
+    private(set) var lastCompletedDaySnapshot:
+        CompletedGameDaySnapshot?
+
+
     private var clockTask:
-    Task<Void, Never>?
+        Task<Void, Never>?
+
+
+    private var lastWallTickDate:
+        Date?
+
+
+    private var simulatedDate =
+        Date()
+
+
+    var gameClockTimeZone:
+        TimeZone {
+
+        TimeZone(
+            identifier:
+                clockTimeZoneIdentifier
+        )
+        ??
+        .current
+    }
     
     
     // MARK: - Init
@@ -161,6 +243,11 @@ final class GameStore:
         
         gameNodes[index] =
         updatedNode
+        
+        invalidateDraftPlanIfNeeded(
+            changedNodeID:
+                updatedNode.id
+        )
     }
     
     // =====================================================
@@ -212,6 +299,15 @@ final class GameStore:
         
         pendingNodeAction =
         nil
+        
+        invalidateDraftPlanIfNeeded(
+            changedNodeID:
+                id
+        )
+        
+        removeDeletedNodeFromFutureRouteDraft(id)
+        
+        
     }
     
     // =====================================================
@@ -926,6 +1022,45 @@ final class GameStore:
             }
     }
     
+    private func invalidateRouteDraftIfSourceRouteNoLongerExists() {
+
+        guard let originalRouteID =
+            futureRouteDraft
+                .originalRouteID
+        else {
+
+            return
+        }
+
+
+        guard
+            routeState
+                .chosenFutureRoute
+                .id
+            !=
+            originalRouteID
+            ||
+            routeState
+                .chosenFutureRoute
+                .isEmpty
+        else {
+
+            return
+        }
+
+
+        futureRouteDraft =
+            FutureRouteDraft()
+
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+    }
+    
     // =====================================================
     // MARK: - Route Rendering State
     // =====================================================
@@ -1097,32 +1232,46 @@ final class GameStore:
                 stopNodeIDs:
                     []
             )
+
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
     }
     
     // =====================================================
     // MARK: - Edit Chosen Future Route
     // =====================================================
+    @discardableResult
+    func beginEditingChosenFutureRoute() -> Bool {
 
-    func beginEditingChosenFutureRoute() {
+        let route =
+            routeState
+                .chosenFutureRoute
+
 
         guard
-            !routeState
-                .chosenFutureRoute
-                .isEmpty
+            !route.isEmpty,
+            route.isFullyPlanned
         else {
 
-            beginNewFutureRouteDraft()
-
-            return
+            return false
         }
 
+
+        // =================================================
+        // Only copy stops that remain in the future.
+        // Completed/past stops are NOT editable.
+        // =================================================
 
         let snapshot =
             GameRouteProgressResolver
                 .snapshot(
                     of:
-                        routeState
-                            .chosenFutureRoute,
+                        route,
                     at:
                         currentDayTime,
                     gameNodes:
@@ -1135,11 +1284,25 @@ final class GameStore:
         futureRouteDraft =
             FutureRouteDraft(
                 source:
-                    .existingChosenRoute,
+                    .existingChosenRoute(
+                        routeID:
+                            route.id
+                    ),
                 stopNodeIDs:
                     snapshot
                         .futureNodeIDs
             )
+
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+
+
+        return true
     }
     
     @discardableResult
@@ -1242,11 +1405,22 @@ final class GameStore:
         // Add
         // =================================================
 
-        futureRouteDraft
+        var updatedDraft =
+            futureRouteDraft
+
+
+        updatedDraft
             .stopNodeIDs
             .append(
                 nodeID
             )
+
+
+        futureRouteDraft =
+            updatedDraft
+
+
+        invalidateFutureRouteDraftPlan()
 
 
         return true
@@ -1257,59 +1431,89 @@ final class GameStore:
         nodeID:
             GameNodeID
     ) -> Bool {
-
+        
         guard let index =
-            futureRouteDraft
-                .stopNodeIDs
-                .firstIndex(
-                    of:
-                        nodeID
-                )
+                futureRouteDraft
+            .stopNodeIDs
+            .firstIndex(
+                of:
+                    nodeID
+            )
         else {
-
+            
             return false
         }
-
-
+        
+        
+        var updatedDraft =
         futureRouteDraft
+        
+        
+        updatedDraft
             .stopNodeIDs
             .remove(
                 at:
                     index
             )
-
-
+        
+        
+        futureRouteDraft =
+        updatedDraft
+        
+        
+        invalidateFutureRouteDraftPlan()
+        
+        
         return true
+        
     }
     
     @discardableResult
     func moveFutureRouteDraftStop(
-        from sourceIndex:
-            Int,
-        to destinationIndex:
-            Int
+        from sourceIndex: Int,
+        to destinationIndex: Int
     ) -> Bool {
 
+        let original =
+            futureRouteDraft.stopNodeIDs
+
+
         guard
-            futureRouteDraft
-                .stopNodeIDs
-                .indices
-                .contains(
-                    sourceIndex
-                )
+            original.indices.contains(
+                sourceIndex
+            )
         else {
 
             return false
         }
 
 
+        guard
+            destinationIndex >= 0,
+            destinationIndex < original.count
+        else {
+
+            return false
+        }
+
+
+        guard
+            sourceIndex != destinationIndex
+        else {
+
+            return true
+        }
+
+
+        var reordered =
+            original
+
+
         let nodeID =
-            futureRouteDraft
-                .stopNodeIDs
-                .remove(
-                    at:
-                        sourceIndex
-                )
+            reordered.remove(
+                at:
+                    sourceIndex
+            )
 
 
         let safeDestination =
@@ -1318,19 +1522,30 @@ final class GameStore:
                     destinationIndex,
                     0
                 ),
-                futureRouteDraft
-                    .stopNodeIDs
-                    .count
+                reordered.count
             )
 
 
-        futureRouteDraft
-            .stopNodeIDs
-            .insert(
-                nodeID,
-                at:
-                    safeDestination
-            )
+        reordered.insert(
+            nodeID,
+            at:
+                safeDestination
+        )
+
+
+        var updatedDraft =
+            futureRouteDraft
+
+
+        updatedDraft.stopNodeIDs =
+            reordered
+
+
+        futureRouteDraft =
+            updatedDraft
+
+
+        invalidateFutureRouteDraftPlan()
 
 
         return true
@@ -1340,6 +1555,16 @@ final class GameStore:
 
         futureRouteDraft =
             FutureRouteDraft()
+
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+        
+        clearFutureRouteEditingState()
     }
     
     var futureRouteDraftValidation:
@@ -1624,7 +1849,1985 @@ final class GameStore:
         print("")
     }
     
+    // =====================================================
+    // MARK: - Reorder Future Route Draft Stops
+    // =====================================================
+
+    @discardableResult
+    func moveFutureRouteDraftStops(
+        fromIndices sourceIndices: [Int],
+        toOffset destinationOffset: Int
+    ) -> Bool {
+
+        let original =
+            futureRouteDraft.stopNodeIDs
+
+
+        guard !original.isEmpty else {
+            return false
+        }
+
+
+        let sortedIndices =
+            Array(
+                Set(sourceIndices)
+            )
+            .sorted()
+
+
+        guard !sortedIndices.isEmpty else {
+            return false
+        }
+
+
+        // =================================================
+        // Make sure every source index exists.
+        // =================================================
+
+        guard sortedIndices.allSatisfy({
+            original.indices.contains($0)
+        }) else {
+
+            return false
+        }
+
+
+        guard
+            destinationOffset >= 0,
+            destinationOffset <= original.count
+        else {
+
+            return false
+        }
+
+
+        // =================================================
+        // Items being moved
+        // =================================================
+
+        let movingNodeIDs =
+            sortedIndices.map {
+                original[$0]
+            }
+
+
+        let sourceSet =
+            Set(sortedIndices)
+
+
+        // =================================================
+        // Everything that stays behind
+        // =================================================
+
+        var remainingNodeIDs: [GameNodeID] =
+            original
+                .enumerated()
+                .compactMap { index, nodeID in
+
+                    sourceSet.contains(index)
+                    ? nil
+                    : nodeID
+                }
+
+
+        /*
+         SwiftUI's destination offset refers to the
+         collection BEFORE the moving elements are removed.
+
+         So if we move:
+
+             A B C D
+
+         A -> offset 3
+
+         SwiftUI expects:
+
+             B C A D
+
+         not:
+
+             B C D A
+        */
+
+        let removedBeforeDestination =
+            sortedIndices.filter {
+                $0 < destinationOffset
+            }
+            .count
+
+
+        let adjustedDestination =
+            destinationOffset
+            -
+            removedBeforeDestination
+
+
+        let safeDestination =
+            min(
+                max(
+                    adjustedDestination,
+                    0
+                ),
+                remainingNodeIDs.count
+            )
+
+
+        remainingNodeIDs.insert(
+            contentsOf:
+                movingNodeIDs,
+            at:
+                safeDestination
+        )
+
+
+        // =================================================
+        // Reassign the struct so @Published definitely emits.
+        // =================================================
+
+        var updatedDraft =
+            futureRouteDraft
+
+
+        updatedDraft.stopNodeIDs =
+            remainingNodeIDs
+
+
+        futureRouteDraft =
+            updatedDraft
+
+
+        return true
+    }
     
+    // =====================================================
+    // MARK: - Plan Future Route Draft
+    // =====================================================
+
+    @discardableResult
+    func planFutureRouteDraft()
+        -> FutureRouteDraftPlanningResult {
+
+        // =================================================
+        // Any previous preview is now obsolete.
+        // =================================================
+
+        futureRoutePreview =
+            nil
+
+
+        // =================================================
+        // 1. Validate the user's draft.
+        // =================================================
+
+        let validation =
+            futureRouteDraftValidation
+
+
+        guard validation.isValid else {
+
+            let result =
+                FutureRouteDraftPlanningResult(
+                    validation:
+                        validation,
+                    plannedRoute:
+                        nil,
+                    planningIssues:
+                        [],
+                    start:
+                        nil,
+                    failure:
+                        .invalidDraft
+                )
+
+
+            futureRouteDraftPlan =
+                result
+
+
+            return result
+        }
+
+
+        // =================================================
+        // 2. We should have at least two stops because the
+        //    validator currently requires two.
+        // =================================================
+
+        guard
+            futureRouteDraft
+                .stopNodeIDs
+                .count
+            >=
+            2
+        else {
+
+            let result =
+                FutureRouteDraftPlanningResult(
+                    validation:
+                        validation,
+                    plannedRoute:
+                        nil,
+                    planningIssues:
+                        [],
+                    start:
+                        nil,
+                    failure:
+                        .invalidDraft
+                )
+
+
+            futureRouteDraftPlan =
+                result
+
+
+            return result
+        }
+
+
+        // =================================================
+        // 3. Resolve the user's ACTUAL current road position.
+        //
+        //    This comes from completed-route history.
+        //
+        //    We DO NOT:
+        //
+        //    - use nearest road
+        //    - snap current progress to a road
+        //    - create a fake GameMapNode
+        // =================================================
+
+        let currentRouteAnchor =
+            CurrentRoutePositionResolver
+                .resolve(
+                    completedRoute:
+                        routeState
+                            .completedRoute,
+                    currentTime:
+                        currentDayTime,
+                    graph:
+                        roadGraph
+                )
+
+
+        // =================================================
+        // 4. If we HAVE a stored completed boundary but
+        //    cannot resolve that boundary into a routing
+        //    anchor, something is wrong.
+        //
+        //    Do not silently fall back to the first stop.
+        // =================================================
+
+        if
+            routeState
+                .completedRoute
+                .boundary
+            != nil,
+            currentRouteAnchor == nil
+        {
+
+            let result =
+                FutureRouteDraftPlanningResult(
+                    validation:
+                        validation,
+                    plannedRoute:
+                        nil,
+                    planningIssues:
+                        [],
+                    start:
+                        nil,
+                    failure:
+                        .currentRoutePositionUnavailable
+                )
+
+
+            futureRouteDraftPlan =
+                result
+
+
+            return result
+        }
+
+
+        // =================================================
+        // 5. Construct the unplanned route.
+        // =================================================
+
+        let unplannedRoute:
+            GameRoute
+
+
+        let planStart:
+            FutureRouteDraftPlanStart
+
+
+        if let currentRouteAnchor {
+
+            // =============================================
+            // The day has already progressed along a route.
+            //
+            // Route starts at the exact current road
+            // position, which may be partway through an
+            // edge.
+            //
+            // CURRENT POSITION
+            //       ↓
+            //   entryLeg
+            //       ↓
+            // first future stop
+            //       ↓
+            // second future stop
+            // =============================================
+
+            unplannedRoute =
+                GameRoute.unplanned(
+                    startingAt:
+                        currentRouteAnchor,
+                    stopNodeIDs:
+                        futureRouteDraft
+                            .stopNodeIDs
+                )
+
+
+            planStart =
+                .currentRoutePosition(
+                    currentRouteAnchor
+                )
+
+        } else {
+
+            // =============================================
+            // No completed route boundary exists yet.
+            //
+            // The first selected node becomes the route's
+            // normal starting stop.
+            // =============================================
+
+            unplannedRoute =
+                GameRoute.unplanned(
+                    stopNodeIDs:
+                        futureRouteDraft
+                            .stopNodeIDs
+                )
+
+
+            planStart =
+                .firstSelectedStop
+        }
+
+
+        // =================================================
+        // 6. Create the actual time-aware road planner.
+        // =================================================
+
+        let planner =
+            GameRoutePathPlanner(
+                timePolicy:
+                    .dayMap,
+                routingOptions:
+                    .standard
+            )
+
+
+        // =================================================
+        // 7. Plan:
+        //
+        //    current position -> first stop   [if entry leg]
+        //
+        //    first stop -> second stop
+        //
+        //    second stop -> third stop
+        //
+        //    etc.
+        //
+        //    Road traffic direction and forward-time rules
+        //    are enforced by RoadPathfinder.
+        // =================================================
+
+        let planningResult =
+            planner.plan(
+                route:
+                    unplannedRoute,
+                gameNodes:
+                    gameNodes,
+                roadGraph:
+                    roadGraph
+            )
+
+
+        // =================================================
+        // 8. Pathfinding failed.
+        // =================================================
+
+        guard
+            planningResult.succeeded,
+            planningResult
+                .route
+                .isFullyPlanned
+        else {
+
+            let result =
+                FutureRouteDraftPlanningResult(
+                    validation:
+                        validation,
+                    plannedRoute:
+                        nil,
+                    planningIssues:
+                        planningResult
+                            .issues,
+                    start:
+                        planStart,
+                    failure:
+                        .noValidRoadPath
+                )
+
+
+            futureRouteDraftPlan =
+                result
+
+
+            return result
+        }
+
+
+        // =================================================
+        // 9. Successful draft plan.
+        //
+        //    IMPORTANT:
+        //
+        //    We still do NOT modify:
+        //
+        //    routeState.chosenFutureRoute
+        //
+        //    This is only an editor plan.
+        // =================================================
+
+        let result =
+            FutureRouteDraftPlanningResult(
+                validation:
+                    validation,
+                plannedRoute:
+                    planningResult
+                        .route,
+                planningIssues:
+                    [],
+                start:
+                    planStart,
+                failure:
+                    nil
+            )
+
+
+        futureRouteDraftPlan =
+            result
+
+
+        return result
+    }
+    
+    private func invalidateFutureRouteDraftPlan() {
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+    }
+    
+    func clearFutureRoutePreview() {
+
+        futureRoutePreview =
+            nil
+    }
+    
+    // =====================================================
+    // MARK: - Generate Future Route Preview
+    // =====================================================
+
+    @discardableResult
+    func generateFutureRoutePreview(
+        maxAlternatives:
+            Int = 3
+    ) -> Bool {
+
+        // =================================================
+        // Must already have a successful 6D plan.
+        // =================================================
+
+        guard
+            let draftPlan =
+                futureRouteDraftPlan,
+
+            draftPlan.succeeded,
+
+            let primaryRoute =
+                draftPlan.plannedRoute,
+
+            primaryRoute.isFullyPlanned
+        else {
+
+            futureRoutePreview =
+                nil
+
+            return false
+        }
+
+
+        // =================================================
+        // Generate alternatives from EXACT same start.
+        // =================================================
+
+        let policy =
+            AlternativeRouteGenerationPolicy(
+                maxAlternatives:
+                    maxAlternatives
+            )
+
+
+        let generator =
+            AlternativeRouteGenerator(
+                policy:
+                    policy
+            )
+
+
+        let alternatives =
+            generator.generate(
+                from:
+                    primaryRoute,
+                gameNodes:
+                    gameNodes,
+                roadGraph:
+                    roadGraph,
+                timePolicy:
+                    .dayMap
+            )
+
+
+        // =================================================
+        // Create temporary preview.
+        // =================================================
+
+        futureRoutePreview =
+            FutureRoutePreview(
+                primaryRoute:
+                    primaryRoute,
+                alternativeRoutes:
+                    alternatives,
+                selectedRouteID:
+                    primaryRoute.id
+            )
+
+
+        return true
+    }
+
+    @discardableResult
+    func selectFutureRoutePreview(
+        routeID:
+            RouteID
+    ) -> Bool {
+
+        guard var preview =
+            futureRoutePreview
+        else {
+
+            return false
+        }
+
+
+        guard
+            preview
+                .allRoutes
+                .contains(
+                    where: {
+
+                        $0.id ==
+                            routeID
+                    }
+                )
+        else {
+
+            return false
+        }
+
+
+        preview.selectedRouteID =
+            routeID
+
+
+        futureRoutePreview =
+            preview
+
+
+        return true
+    }
+    
+    // =====================================================
+    // MARK: - Commit Future Route Preview
+    // =====================================================
+
+    @discardableResult
+    func commitFutureRoutePreview()
+        -> FutureRouteCommitResult {
+
+        // =================================================
+        // 1. Preview must still exist.
+        // =================================================
+
+        guard let preview =
+            futureRoutePreview
+        else {
+
+            return .failure(
+                .noPreview
+            )
+        }
+
+
+        // =================================================
+        // 2. Preview must have a selected route.
+        // =================================================
+
+        guard let selectedRoute =
+            preview.selectedRoute
+        else {
+
+            return .failure(
+                .selectedRouteUnavailable
+            )
+        }
+
+
+        // =================================================
+        // 3. Selected route must still be fully planned.
+        // =================================================
+
+        guard
+            selectedRoute
+                .isFullyPlanned
+        else {
+
+            return .failure(
+                .selectedRouteNotPlanned
+            )
+        }
+
+
+        // =================================================
+        // 4. If this editor started from an existing chosen
+        //    route, verify that same route is STILL live.
+        //
+        //    Example:
+        //
+        //    Edit Route A
+        //         ↓
+        //    something else changes live route to B
+        //         ↓
+        //    old Route A editor tries to commit
+        //
+        //    REJECT.
+        // =================================================
+
+        switch
+            futureRouteDraft
+                .source
+        {
+
+        case .newRoute:
+
+            break
+
+
+        case let .existingChosenRoute(
+            originalRouteID
+        ):
+
+            guard
+                !routeState
+                    .chosenFutureRoute
+                    .isEmpty,
+                routeState
+                    .chosenFutureRoute
+                    .id
+                ==
+                originalRouteID
+            else {
+
+                return .failure(
+                    .sourceRouteChanged
+                )
+            }
+        }
+
+
+        // =================================================
+        // 5. Freeze CURRENT live route history through NOW.
+        //
+        //    THIS MUST HAPPEN BEFORE:
+        //
+        //    routeState.chosenFutureRoute = selectedRoute
+        //
+        //    Otherwise we could accidentally record the new
+        //    route as historical travel.
+        // =================================================
+
+        let progression =
+            advanceCompletedRoute(
+                to:
+                    currentDayTime
+            )
+
+
+        guard
+            progression
+                .succeeded
+        else {
+
+            return .failure(
+                .timeMovedBackward
+            )
+        }
+
+
+        // =================================================
+        // 6. Verify that the proposed route STILL passes
+        //    through the user's actual current road position.
+        //
+        //    This matters because time may have advanced
+        //    while Route Preview was open.
+        // =================================================
+
+        if let completedBoundary =
+            routeState
+                .completedRoute
+                .boundary
+        {
+
+            // =============================================
+            // Determine where the proposed route says the
+            // user should be at CURRENT time.
+            // =============================================
+
+            let candidateSnapshot =
+                GameRouteProgressResolver
+                    .snapshot(
+                        of:
+                            selectedRoute,
+                        at:
+                            currentDayTime,
+                        gameNodes:
+                            gameNodes,
+                        graph:
+                            roadGraph
+                    )
+
+
+            guard let candidateBoundary =
+                candidateSnapshot
+                    .boundary
+            else {
+
+                return .failure(
+                    .currentPositionChanged
+                )
+            }
+
+
+            // =============================================
+            // Must be the same actual road location.
+            //
+            // This properly handles:
+            //
+            // .vertex(...)
+            //
+            // and:
+            //
+            // .edge(edgeID:fraction:)
+            // =============================================
+
+            guard
+                RoadLocationCanonicalizer
+                    .equivalent(
+                        completedBoundary,
+                        candidateBoundary,
+                        graph:
+                            roadGraph
+                    )
+            else {
+
+                return .failure(
+                    .currentPositionChanged
+                )
+            }
+        }
+
+
+        // =================================================
+        // 7. Build the new live alternative route set.
+        //
+        //    Every preview route OTHER than the selected
+        //    route becomes an alternative.
+        // =================================================
+
+        var newAlternativeRoutes:
+            [GameRoute] = []
+
+
+        for route in
+            preview
+                .allRoutes
+        {
+
+            // =============================================
+            // Selected route is becoming chosen.
+            // =============================================
+
+            guard
+                route.id
+                !=
+                selectedRoute.id
+            else {
+
+                continue
+            }
+
+
+            // =============================================
+            // Don't preserve an identical road traversal
+            // under a different RouteID.
+            // =============================================
+
+            guard
+                route
+                    .plannedPathSignature
+                !=
+                selectedRoute
+                    .plannedPathSignature
+            else {
+
+                continue
+            }
+
+
+            // =============================================
+            // Only install valid planned alternatives.
+            // =============================================
+
+            guard
+                route.isFullyPlanned
+            else {
+
+                continue
+            }
+
+
+            newAlternativeRoutes
+                .append(
+                    route
+                )
+        }
+
+
+        // =================================================
+        // 8. Defensive duplicate removal.
+        // =================================================
+
+        newAlternativeRoutes =
+            uniqueRoutesByPath(
+                newAlternativeRoutes
+            )
+
+
+        // =================================================
+        // 9. Sort alternatives from cheapest to most
+        //    expensive.
+        // =================================================
+
+        newAlternativeRoutes
+            .sort { lhs, rhs in
+
+                let lhsCost =
+                    lhs.plannedTotalCost
+                    ??
+                    .greatestFiniteMagnitude
+
+
+                let rhsCost =
+                    rhs.plannedTotalCost
+                    ??
+                    .greatestFiniteMagnitude
+
+
+                return lhsCost <
+                    rhsCost
+            }
+
+
+        // =================================================
+        // 10. Install the selected preview as the LIVE
+        //     future route.
+        //
+        //     Notice that completedRoute is NOT assigned
+        //     here.
+        //
+        //     It was only advanced normally in step 5.
+        // =================================================
+
+        routeState
+            .chosenFutureRoute =
+                selectedRoute
+
+
+        routeState
+            .alternativeRoutes =
+                newAlternativeRoutes
+
+
+        // =================================================
+        // 11. The newly installed route owns history only
+        //     from this moment forward.
+        // =================================================
+
+        routeState
+            .chosenFutureRouteActivatedAt =
+                currentDayTime
+
+
+        // =================================================
+        // 12. Clear an old route selection if that route
+        //     disappeared during replacement.
+        // =================================================
+
+        if let selectedRouteID =
+            selection
+                .selectedRouteID
+        {
+
+            let selectedRouteStillExists =
+                futureRoute(
+                    id:
+                        selectedRouteID
+                )
+                != nil
+
+
+            if !selectedRouteStillExists {
+
+                selection
+                    .clear()
+            }
+        }
+
+
+        // =================================================
+        // 13. Clear all temporary editing state.
+        //
+        //     Do this only AFTER the live route was
+        //     successfully installed.
+        // =================================================
+
+        futureRouteDraft =
+            FutureRouteDraft()
+
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+
+
+        // =================================================
+        // 14. Success
+        // =================================================
+
+        return .success
+    }
+    
+    var routePreviewRenderState:
+        RoutePreviewRenderState {
+
+        guard let preview =
+            futureRoutePreview
+        else {
+
+            return .empty
+        }
+
+
+        var renderPaths:
+            [RoutePreviewRenderPath] = []
+
+
+        for route in
+            preview.allRoutes {
+
+            guard
+                route.isFullyPlanned
+            else {
+
+                continue
+            }
+
+
+            let snapshot =
+                GameRouteProgressResolver
+                    .snapshot(
+                        of:
+                            route,
+                        at:
+                            currentDayTime,
+                        gameNodes:
+                            gameNodes,
+                        graph:
+                            roadGraph
+                    )
+
+
+            guard
+                !snapshot
+                    .futureSegments
+                    .isEmpty
+            else {
+
+                continue
+            }
+
+
+            renderPaths.append(
+                RoutePreviewRenderPath(
+                    routeID:
+                        route.id,
+                    segments:
+                        snapshot.futureSegments,
+                    isSelected:
+                        route.id ==
+                        preview.selectedRouteID
+                )
+            )
+        }
+
+
+        return RoutePreviewRenderState(
+            routes:
+                renderPaths
+        )
+    }
+    
+    // =====================================================
+    // MARK: - Route Draft Validation Messages
+    // =====================================================
+
+    func message(
+        for issue:
+            FutureRouteDraftValidationIssue
+    ) -> String {
+
+        switch issue {
+
+        case .tooFewStops:
+
+            return "Select at least two future route stops."
+
+
+        case let .duplicateStop(
+            nodeID
+        ):
+
+            return
+                "\(routeNodeTitle(nodeID)) is included more than once."
+
+
+        case let .nodeNotFound(
+            nodeID
+        ):
+
+            return
+                "A selected route stop no longer exists: \(routeNodeTitle(nodeID))."
+
+
+        case let .nodeDisabled(
+            nodeID
+        ):
+
+            return
+                "\(routeNodeTitle(nodeID)) is currently disabled."
+
+
+        case let .nodeNotRouteEligible(
+            nodeID
+        ):
+
+            return
+                "\(routeNodeTitle(nodeID)) is not connected to a valid road route."
+
+
+        case let .stopIsInPast(
+            nodeID
+        ):
+
+            return
+                "\(routeNodeTitle(nodeID)) is already in the past."
+
+
+        case let .stopsOutOfTimeOrder(
+            earlierNodeID,
+            laterNodeID
+        ):
+
+            return
+                "\(routeNodeTitle(laterNodeID)) occurs before \(routeNodeTitle(earlierNodeID)). Route stops must move forward through the day."
+        }
+    }
+    
+    private func routeNodeTitle(
+        _ nodeID:
+            GameNodeID
+    ) -> String {
+
+        gameNode(
+            id:
+                nodeID
+        )?
+        .content
+        .title
+        ??
+        "Unknown Stop"
+    }
+    
+    var futureRouteDraftValidationMessages:
+        [String] {
+
+        futureRouteDraftValidation
+            .issues
+            .map {
+
+                message(
+                    for:
+                        $0
+                )
+            }
+    }
+    
+    var isFutureRoutePreviewStale:
+        Bool {
+
+        guard
+            let preview =
+                futureRoutePreview,
+
+            let selectedRoute =
+                preview.selectedRoute
+        else {
+
+            return false
+        }
+
+
+        // =================================================
+        // Existing source route changed
+        // =================================================
+
+        if case let .existingChosenRoute(
+            originalRouteID
+        ) =
+            futureRouteDraft.source
+        {
+
+            if
+                routeState
+                    .chosenFutureRoute
+                    .id
+                !=
+                originalRouteID
+            {
+
+                return true
+            }
+        }
+
+
+        // =================================================
+        // No completed boundary means there is currently
+        // nothing geometric to compare.
+        // =================================================
+
+        guard let completedBoundary =
+            routeState
+                .completedRoute
+                .boundary
+        else {
+
+            return false
+        }
+
+
+        let snapshot =
+            GameRouteProgressResolver
+                .snapshot(
+                    of:
+                        selectedRoute,
+                    at:
+                        currentDayTime,
+                    gameNodes:
+                        gameNodes,
+                    graph:
+                        roadGraph
+                )
+
+
+        guard let candidateBoundary =
+            snapshot.boundary
+        else {
+
+            return true
+        }
+
+
+        return
+            !RoadLocationCanonicalizer
+                .equivalent(
+                    completedBoundary,
+                    candidateBoundary,
+                    graph:
+                        roadGraph
+                )
+    }
+    
+    private func invalidateDraftPlanIfNeeded(
+        changedNodeID:
+            GameNodeID
+    ) {
+
+        guard
+            futureRouteDraft
+                .stopNodeIDs
+                .contains(
+                    changedNodeID
+                )
+        else {
+
+            return
+        }
+
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+    }
+    
+    private func removeDeletedNodeFromFutureRouteDraft(
+        _ nodeID:
+            GameNodeID
+    ) {
+
+        guard
+            futureRouteDraft
+                .stopNodeIDs
+                .contains(
+                    nodeID
+                )
+        else {
+
+            return
+        }
+
+
+        var updated =
+            futureRouteDraft
+
+
+        updated.stopNodeIDs.removeAll {
+            $0 == nodeID
+        }
+
+
+        futureRouteDraft =
+            updated
+
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+    }
+    
+    private func clearFutureRouteEditingState() {
+
+        futureRouteDraft =
+            FutureRouteDraft()
+
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+    }
+    
+    // =====================================================
+    // MARK: - Start / Stop Clock
+    // =====================================================
+
+    func startGameClock() {
+
+        guard
+            !isGameClockRunning
+        else {
+
+            return
+        }
+
+
+        isGameClockRunning =
+            true
+
+
+        lastWallTickDate =
+            Date()
+
+
+        // Synchronize immediately rather than waiting
+        // for the first one-second tick.
+        performClockTick()
+
+
+        clockTask =
+            Task { [weak self] in
+
+                while !Task.isCancelled {
+
+                    try? await Task.sleep(
+                        for:
+                            .seconds(1)
+                    )
+
+
+                    guard
+                        !Task.isCancelled,
+                        let self
+                    else {
+
+                        return
+                    }
+
+
+                    self.performClockTick()
+                }
+            }
+    }
+
+
+    func stopGameClock() {
+
+        clockTask?
+            .cancel()
+
+
+        clockTask =
+            nil
+
+
+        isGameClockRunning =
+            false
+
+
+        lastWallTickDate =
+            nil
+    }
+    
+    private func performClockTick() {
+
+        let wallNow =
+            Date()
+
+
+        defer {
+
+            lastWallTickDate =
+                wallNow
+        }
+
+
+        switch gameClockMode {
+
+        // =================================================
+        // REAL TIME
+        // =================================================
+
+        case .realTime:
+
+            applyClockDate(
+                wallNow
+            )
+
+
+        // =================================================
+        // SIMULATED TIME
+        // =================================================
+
+        case .simulated:
+
+            guard
+                !isSimulationPaused
+            else {
+
+                return
+            }
+
+
+            let previousWallDate =
+                lastWallTickDate
+                ??
+                wallNow
+
+
+            let elapsed =
+                max(
+                    0,
+                    wallNow.timeIntervalSince(
+                        previousWallDate
+                    )
+                )
+
+
+            let simulatedElapsed =
+                elapsed
+                *
+                simulationSpeed
+
+
+            simulatedDate =
+                simulatedDate
+                    .addingTimeInterval(
+                        simulatedElapsed
+                    )
+
+
+            applyClockDate(
+                simulatedDate
+            )
+        }
+    }
+    
+    private func applyClockDate(
+        _ date:
+            Date
+    ) {
+
+        let timeZone =
+            gameClockTimeZone
+
+
+        let newDay =
+            CalendarDayKey(
+                date:
+                    date,
+                timeZone:
+                    timeZone
+            )
+
+
+        let newDayTime =
+            GameClockCalendar
+                .dayTime(
+                    for:
+                        date,
+                    timeZone:
+                        timeZone
+                )
+
+
+        // =================================================
+        // New calendar day
+        // =================================================
+
+        if newDay !=
+            currentCalendarDay
+        {
+
+            transitionToNewGameDay(
+                date:
+                    date,
+                day:
+                    newDay,
+                time:
+                    newDayTime
+            )
+
+
+            return
+        }
+
+
+        // =================================================
+        // Same day
+        //
+        // Completed route history never rewinds.
+        // This also protects against DST clock fallback.
+        // =================================================
+
+        let safeTime =
+            max(
+                currentDayTime,
+                newDayTime
+            )
+
+
+        currentClockDate =
+            date
+
+
+        let progression =
+            advanceCompletedRoute(
+                to:
+                    safeTime
+            )
+
+
+        guard
+            progression.succeeded
+        else {
+
+            return
+        }
+
+
+        currentDayTime =
+            safeTime
+    }
+    
+    private func transitionToNewGameDay(
+        date:
+            Date,
+        day:
+            CalendarDayKey,
+        time:
+            DayTime
+    ) {
+
+        // =================================================
+        // Finish the previous day.
+        // =================================================
+
+        let finalProgression =
+            advanceCompletedRoute(
+                to:
+                    .endOfDay
+            )
+
+
+        if finalProgression.succeeded {
+
+            lastCompletedDaySnapshot =
+                CompletedGameDaySnapshot(
+                    gameDayID:
+                        currentGameDayID,
+                    calendarDay:
+                        currentCalendarDay,
+                    completedRoute:
+                        finalProgression
+                            .completedRoute
+                )
+        }
+
+
+        // =================================================
+        // Start new day.
+        // =================================================
+
+        currentGameDayID =
+            GameDayID()
+
+
+        currentCalendarDay =
+            day
+
+
+        currentClockDate =
+            date
+
+
+        currentDayTime =
+            time
+
+
+        // New day means new route state.
+        routeState =
+            DayRouteState()
+
+
+        clearFutureRouteEditingState()
+
+
+        selection.clear()
+
+
+        // Establish that the new day has already progressed
+        // through the current clock time, even though no
+        // route exists yet.
+        _ =
+            advanceCompletedRoute(
+                to:
+                    time
+            )
+    }
+    
+    @discardableResult
+    func updateCurrentDayTime(
+        _ newTime:
+            DayTime
+    ) -> CompletedRouteProgressionResult {
+
+        let result =
+            advanceCompletedRoute(
+                to:
+                    newTime
+            )
+
+
+        guard
+            result.succeeded
+        else {
+
+            return result
+        }
+
+
+        currentDayTime =
+            newTime
+
+
+        if let date =
+            GameClockCalendar.date(
+                for:
+                    currentCalendarDay,
+                at:
+                    newTime,
+                timeZone:
+                    gameClockTimeZone
+            )
+        {
+
+            currentClockDate =
+                date
+
+
+            if gameClockMode ==
+                .simulated
+            {
+
+                simulatedDate =
+                    date
+            }
+        }
+
+
+        return result
+    }
+    
+    func useRealTimeClock() {
+
+        gameClockMode =
+            .realTime
+
+
+        isSimulationPaused =
+            false
+
+
+        lastWallTickDate =
+            Date()
+
+
+        applyClockDate(
+            Date()
+        )
+    }
+    
+    func useSimulatedClock(
+        speed:
+            Double = 60
+    ) {
+
+        gameClockMode =
+            .simulated
+
+
+        simulationSpeed =
+            max(
+                0.1,
+                min(
+                    speed,
+                    3_600
+                )
+            )
+
+
+        simulatedDate =
+            currentClockDate
+
+
+        isSimulationPaused =
+            false
+
+
+        lastWallTickDate =
+            Date()
+    }
+    
+    func setSimulationSpeed(
+        _ speed:
+            Double
+    ) {
+
+        simulationSpeed =
+            max(
+                0.1,
+                min(
+                    speed,
+                    3_600
+                )
+            )
+    }
+
+
+    func pauseSimulation() {
+
+        guard
+            gameClockMode ==
+                .simulated
+        else {
+
+            return
+        }
+
+
+        isSimulationPaused =
+            true
+    }
+
+
+    func resumeSimulation() {
+
+        guard
+            gameClockMode ==
+                .simulated
+        else {
+
+            return
+        }
+
+
+        lastWallTickDate =
+            Date()
+
+
+        isSimulationPaused =
+            false
+    }
+    
+    @discardableResult
+    func advanceSimulatedTime(
+        by seconds:
+            TimeInterval
+    ) -> Bool {
+
+        guard
+            gameClockMode ==
+                .simulated,
+            seconds >= 0
+        else {
+
+            return false
+        }
+
+
+        simulatedDate =
+            simulatedDate
+                .addingTimeInterval(
+                    seconds
+                )
+
+
+        lastWallTickDate =
+            Date()
+
+
+        applyClockDate(
+            simulatedDate
+        )
+
+
+        return true
+    }
+    
+    @discardableResult
+    func setSimulatedTime(
+        _ time:
+            DayTime
+    ) -> Bool {
+
+        guard
+            gameClockMode ==
+                .simulated
+        else {
+
+            return false
+        }
+
+
+        // Historical route state is append-only.
+        guard
+            time >=
+                currentDayTime
+        else {
+
+            return false
+        }
+
+
+        guard let date =
+            GameClockCalendar.date(
+                for:
+                    currentCalendarDay,
+                at:
+                    time,
+                timeZone:
+                    gameClockTimeZone
+            )
+        else {
+
+            return false
+        }
+
+
+        simulatedDate =
+            date
+
+
+        lastWallTickDate =
+            Date()
+
+
+        applyClockDate(
+            date
+        )
+
+
+        return true
+    }
+    
+    func resetSimulationDay(
+        to time:
+            DayTime
+    ) {
+
+        guard let date =
+            GameClockCalendar.date(
+                for:
+                    currentCalendarDay,
+                at:
+                    time,
+                timeZone:
+                    gameClockTimeZone
+            )
+        else {
+
+            return
+        }
+
+
+        gameClockMode =
+            .simulated
+
+
+        isSimulationPaused =
+            false
+
+
+        currentGameDayID =
+            GameDayID()
+
+
+        routeState =
+            DayRouteState()
+
+
+        clearFutureRouteEditingState()
+
+
+        selection.clear()
+
+
+        currentClockDate =
+            date
+
+
+        currentDayTime =
+            time
+
+
+        simulatedDate =
+            date
+
+
+        lastWallTickDate =
+            Date()
+
+
+        _ =
+            advanceCompletedRoute(
+                to:
+                    time
+            )
+    }
+    
+    func setGameClockTimeZone(
+        _ timeZone:
+            TimeZone
+    ) {
+
+        clockTimeZoneIdentifier =
+            timeZone.identifier
+
+
+        switch gameClockMode {
+
+        case .realTime:
+
+            applyClockDate(
+                Date()
+            )
+
+
+        case .simulated:
+
+            applyClockDate(
+                simulatedDate
+            )
+        }
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    //MARK: xxxxx end of main func
 }
 
 

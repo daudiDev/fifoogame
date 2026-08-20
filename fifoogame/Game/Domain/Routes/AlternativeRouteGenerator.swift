@@ -175,12 +175,8 @@ struct AlternativeRouteGenerator {
             // =========================================
 
             let unplanned =
-                GameRoute
-                    .unplanned(
-                        stopNodeIDs:
-                            chosenRoute
-                                .stopNodeIDs
-                    )
+                chosenRoute
+                    .unplannedPreservingStart()
 
 
             // =========================================

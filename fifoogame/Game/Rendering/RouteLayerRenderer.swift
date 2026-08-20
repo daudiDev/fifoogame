@@ -36,6 +36,9 @@ final class RouteLayerRenderer {
 
     private let boundaryLayer =
         SKNode()
+    
+    private let previewLayer =
+        SKNode()
 
 
     // =====================================================
@@ -79,6 +82,9 @@ final class RouteLayerRenderer {
 
         boundaryLayer.name =
             "routes.boundary"
+        
+        previewLayer.name =
+            "routes.preview"
 
 
         // =============================================
@@ -96,6 +102,9 @@ final class RouteLayerRenderer {
 
         boundaryLayer.zPosition =
             30
+        
+        previewLayer.zPosition =
+            40
 
 
         container.addChild(
@@ -113,6 +122,11 @@ final class RouteLayerRenderer {
         container.addChild(
             boundaryLayer
         )
+        
+        
+        container.addChild(
+            previewLayer
+        )
 
 
         parent.addChild(
@@ -125,19 +139,37 @@ final class RouteLayerRenderer {
     // MARK: - Clear
     // =====================================================
 
-    func clear() {
+    func clearLiveRoutes() {
 
         alternativeLayer
             .removeAllChildren()
 
+
         chosenLayer
             .removeAllChildren()
+
 
         completedLayer
             .removeAllChildren()
 
+
         boundaryLayer
             .removeAllChildren()
+    }
+
+
+    func clearPreview() {
+
+        previewLayer
+            .removeAllChildren()
+    }
+
+
+    func clearAll() {
+
+        clearLiveRoutes()
+
+        clearPreview()
     }
 
 
@@ -154,8 +186,8 @@ final class RouteLayerRenderer {
             RouteID? = nil
     ) {
 
-        clear()
-
+        
+        clearLiveRoutes()
 
         renderAlternatives(
             state.alternatives,
@@ -197,6 +229,169 @@ final class RouteLayerRenderer {
             )
         }
     }
+    
+    func renderPreview(
+        _ state:
+            RoutePreviewRenderState,
+        graph:
+            RoadGraph
+    ) {
+
+        previewLayer
+            .removeAllChildren()
+
+
+        guard
+            !state.isEmpty
+        else {
+
+            return
+        }
+
+
+        // =================================================
+        // Draw unselected previews first.
+        // =================================================
+
+        for route in
+            state.routes
+        where
+            !route.isSelected
+        {
+
+            renderPreviewRoute(
+                route,
+                graph:
+                    graph
+            )
+        }
+
+
+        // =================================================
+        // Selected preview on top.
+        // =================================================
+
+        if let selected =
+            state.routes.first(
+                where: {
+
+                    $0.isSelected
+                }
+            )
+        {
+
+            renderPreviewRoute(
+                selected,
+                graph:
+                    graph
+            )
+        }
+    }
+    
+    private func renderPreviewRoute(
+        _ route:
+            RoutePreviewRenderPath,
+        graph:
+            RoadGraph
+    ) {
+
+        let routeNode =
+            SKNode()
+
+
+        routeNode.name =
+            "route.preview.\(route.routeID.rawValue.uuidString)"
+
+
+        for segment in
+            route.segments {
+
+            if route.isSelected {
+
+                // =========================================
+                // Halo
+                // =========================================
+
+                if let halo =
+                    routeShapeNode(
+                        for:
+                            segment,
+                        graph:
+                            graph,
+                        color:
+                            RouteVisualTheme
+                                .previewSelectedHaloColor,
+                        lineWidth:
+                            RouteVisualTheme
+                                .previewSelectedHaloWidth
+                    )
+                {
+
+                    routeNode.addChild(
+                        halo
+                    )
+                }
+
+
+                // =========================================
+                // Selected preview
+                // =========================================
+
+                if let shape =
+                    routeShapeNode(
+                        for:
+                            segment,
+                        graph:
+                            graph,
+                        color:
+                            RouteVisualTheme
+                                .previewSelectedColor,
+                        lineWidth:
+                            RouteVisualTheme
+                                .previewSelectedWidth
+                    )
+                {
+
+                    routeNode.addChild(
+                        shape
+                    )
+                }
+
+            } else {
+
+                // =========================================
+                // Alternative preview
+                // =========================================
+
+                if let shape =
+                    routeShapeNode(
+                        for:
+                            segment,
+                        graph:
+                            graph,
+                        color:
+                            RouteVisualTheme
+                                .previewAlternativeColor,
+                        lineWidth:
+                            RouteVisualTheme
+                                .previewAlternativeWidth
+                    )
+                {
+
+                    routeNode.addChild(
+                        shape
+                    )
+                }
+            }
+        }
+
+
+        previewLayer.addChild(
+            routeNode
+        )
+    }
+    
+    
 }
 
 

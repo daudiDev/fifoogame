@@ -12,7 +12,6 @@ import SpriteKit
 struct DayMapView: View {
 
     // MARK: - Environment
-
     @Environment(\.scenePhase)
     private var scenePhase
     
@@ -31,6 +30,10 @@ struct DayMapView: View {
     @State
     private var presentedRouteTarget:
         RouteInteractionTarget?
+    
+    @State
+    private var isShowingRouteBuilder =
+        false
 
     // MARK: - State
 
@@ -101,7 +104,7 @@ struct DayMapView: View {
                 spacing: 12
             ) {
 
-                topDiagnosticHUD
+//                topDiagnosticHUD
 
 
                 Spacer()
@@ -142,7 +145,7 @@ struct DayMapView: View {
                  is tapped.
                  */
 
-                bottomDiagnosticHUD
+//                bottomDiagnosticHUD
             }
             .padding()
             
@@ -220,6 +223,13 @@ struct DayMapView: View {
             content:
                 routeInspectorSheet
         )
+        
+        .sheet(
+            isPresented:
+                $isShowingRouteBuilder,
+            content:
+                routeBuilderSheet
+        )
 
         // MARK: - Appear
 
@@ -271,46 +281,21 @@ struct DayMapView: View {
 
 
         // MARK: - Current Time
-
         .onChange(
             of:
-                store.currentDayTime
-        ) { _, newTime in
-
-            scene.renderCurrentTime(
-                newTime
-            )
-        }
-
-
-        // MARK: - Scene Phase
-
+                store.currentDayTime,
+            initial:
+                true,
+            currentDayTimeDidChange
+        )
+        
         .onChange(
             of:
-                scenePhase
-        ) { _, newPhase in
-
-            guard
-                newPhase == .active
-            else {
-
-                return
-            }
-
-
-            /*
-             Do not wait for the next
-             30-second clock tick after
-             returning from background.
-             */
-
-            store.refreshCurrentTime()
-
-
-            scene.renderCurrentTime(
-                store.currentDayTime
-            )
-        }
+                scenePhase,
+            initial:
+                true,
+            scenePhaseDidChange
+        )
 
 
         // MARK: - Selection
@@ -376,6 +361,14 @@ struct DayMapView: View {
             initial:
                 false,
             pendingRouteActionDidChange
+        )
+        
+        .onChange(
+            of:
+                store.futureRoutePreview,
+            initial:
+                false,
+            futureRoutePreviewDidChange
         )
         
         .sheet(
@@ -450,6 +443,79 @@ struct DayMapView: View {
         }
         
     }
+    
+    @ViewBuilder
+    private var routeControl:
+        some View {
+
+        if
+            store
+                .routeState
+                .hasChosenFutureRoute
+        {
+
+            Menu {
+
+                Button {
+
+                    openCurrentRouteBuilder()
+
+                } label: {
+
+                    Label(
+                        "Edit Current Route",
+                        systemImage:
+                            "pencil"
+                    )
+                }
+
+
+                Button {
+
+                    openNewRouteBuilder()
+
+                } label: {
+
+                    Label(
+                        "Build New Route",
+                        systemImage:
+                            "plus"
+                    )
+                }
+
+
+            } label: {
+
+                Label(
+                    "Route",
+                    systemImage:
+                        "point.topleft.down.to.point.bottomright.curvepath"
+                )
+            }
+            .buttonStyle(
+                .borderedProminent
+            )
+
+        } else {
+
+            Button {
+
+                openNewRouteBuilder()
+
+            } label: {
+
+                Label(
+                    "Route",
+                    systemImage:
+                        "point.topleft.down.to.point.bottomright.curvepath"
+                )
+            }
+            .buttonStyle(
+                .borderedProminent
+            )
+        }
+    }
+    
 }
 
 
@@ -493,14 +559,8 @@ private extension DayMapView {
                         3
                 ) {
 
-                    Text(
-                        "Fifoo Game"
-                    )
-                    .font(
-                        .headline
-                    )
-
-                    
+                   routeControl
+  
                 }
 
 
@@ -956,7 +1016,8 @@ private extension DayMapView {
                 target,
 
             chosenRoute:
-                store.routeState
+                store
+                    .routeState
                     .chosenFutureRoute,
 
             inspectedRoute:
@@ -966,11 +1027,15 @@ private extension DayMapView {
                 ),
 
             completedRoute:
-                store.routeState
+                store
+                    .routeState
                     .completedRoute,
 
             onChoose:
-                chooseRoute
+                chooseRoute,
+
+            onEditChosenRoute:
+                openExistingRouteBuilder
         )
     }
 }
@@ -1006,5 +1071,208 @@ private extension DayMapView {
             routeID:
                 routeID
         )
+    }
+}
+
+private extension DayMapView {
+
+    func openNewRouteBuilder() {
+
+        store
+            .beginNewFutureRouteDraft()
+
+
+        isShowingRouteBuilder =
+            true
+    }
+}
+
+private extension DayMapView {
+
+    func routeBuilderSheet() -> some View {
+
+        FutureRouteBuilderView(
+            store:
+                store
+        )
+    }
+}
+
+private extension DayMapView {
+
+    func futureRoutePreviewDidChange(
+        _ oldPreview:
+            FutureRoutePreview?,
+        _ newPreview:
+            FutureRoutePreview?
+    ) {
+
+        guard
+            newPreview != nil
+        else {
+
+            scene.clearRoutePreview()
+
+            return
+        }
+
+
+        let renderState:
+            RoutePreviewRenderState =
+                store.routePreviewRenderState
+
+
+        scene.renderRoutePreview(
+            renderState
+        )
+    }
+}
+
+private extension DayMapView {
+
+    func openExistingRouteBuilder(
+        _ routeID:
+            RouteID
+    ) {
+
+        // =================================================
+        // Make sure the route the inspector referred to
+        // is still the current chosen route.
+        // =================================================
+
+        guard
+            store
+                .routeState
+                .chosenFutureRoute
+                .id
+            ==
+            routeID
+        else {
+
+            return
+        }
+
+
+        let succeeded =
+            store
+                .beginEditingChosenFutureRoute()
+
+
+        guard succeeded else {
+
+            return
+        }
+
+
+        /*
+         RouteInspectorView is itself being dismissed.
+
+         Yield one UI cycle before asking SwiftUI to
+         present the Route Builder sheet.
+        */
+
+        Task { @MainActor in
+
+            await Task.yield()
+
+
+            isShowingRouteBuilder =
+                true
+        }
+    }
+}
+
+private extension DayMapView {
+
+    func openCurrentRouteBuilder() {
+
+        guard
+            !isShowingRouteBuilder
+        else {
+
+            return
+        }
+
+
+        let succeeded =
+            store
+                .beginEditingChosenFutureRoute()
+
+
+        guard succeeded else {
+            return
+        }
+
+
+        isShowingRouteBuilder =
+            true
+    }
+    
+}
+
+private extension DayMapView {
+
+    func currentDayTimeDidChange(
+        _ oldTime:
+            DayTime,
+        _ newTime:
+            DayTime
+    ) {
+
+        // Current-time line / marker
+        scene.renderCurrentTime(
+            newTime
+        )
+
+
+        // Completed route grows and chosen future shrinks.
+        let routeState:
+            RouteRenderState =
+                store.routeRenderState
+
+
+        scene.renderRoutes(
+            routeState
+        )
+
+
+        // Keep an active editor preview synchronized
+        // with the same current time.
+        if
+            store.futureRoutePreview
+            != nil
+        {
+
+            scene.renderRoutePreview(
+                store.routePreviewRenderState
+            )
+        }
+    }
+
+
+    func scenePhaseDidChange(
+        _ oldPhase:
+            ScenePhase,
+        _ newPhase:
+            ScenePhase
+    ) {
+
+        switch newPhase {
+
+        case .active:
+
+            store.startGameClock()
+
+
+        case .inactive,
+             .background:
+
+            store.stopGameClock()
+
+
+        @unknown default:
+
+            store.stopGameClock()
+        }
     }
 }

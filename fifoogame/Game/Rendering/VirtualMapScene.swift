@@ -92,6 +92,10 @@ final class VirtualMapScene: SKScene {
     private var currentRouteRenderState:
         RouteRenderState =
             .empty
+    
+    private var currentRoutePreviewRenderState:
+        RoutePreviewRenderState =
+            .empty
 
 
     // =====================================================
@@ -233,6 +237,39 @@ final class VirtualMapScene: SKScene {
                     .selectedRouteID
         )
     }
+    
+    // =====================================================
+    // MARK: - Route Preview Rendering
+    // =====================================================
+
+    func renderRoutePreview(
+        _ state:
+            RoutePreviewRenderState
+    ) {
+
+        currentRoutePreviewRenderState =
+            state
+
+
+        routeRenderer
+            .renderPreview(
+                state,
+                graph:
+                    roadGraph
+            )
+    }
+    
+    func clearRoutePreview() {
+
+        currentRoutePreviewRenderState =
+            .empty
+
+
+        routeRenderer
+            .clearPreview()
+    }
+    
+    
 
     
 }

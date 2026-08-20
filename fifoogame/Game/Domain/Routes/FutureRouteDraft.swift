@@ -16,14 +16,16 @@ struct FutureRouteDraft:
     // =====================================================
     // MARK: - Source
     // =====================================================
-
+    
     enum Source:
         Equatable,
         Sendable {
 
         case newRoute
 
-        case existingChosenRoute
+        case existingChosenRoute(
+            routeID: RouteID
+        )
     }
 
 
@@ -94,6 +96,42 @@ extension FutureRouteDraft {
         stopNodeIDs.contains(
             nodeID
         )
+    }
+}
+
+extension FutureRouteDraft {
+
+    var isEditingExistingRoute:
+        Bool {
+
+        if case .existingChosenRoute =
+            source
+        {
+
+            return true
+        }
+
+
+        return false
+    }
+
+
+    var originalRouteID:
+        RouteID? {
+
+        switch source {
+
+        case .newRoute:
+
+            return nil
+
+
+        case let .existingChosenRoute(
+            routeID
+        ):
+
+            return routeID
+        }
     }
 }
 

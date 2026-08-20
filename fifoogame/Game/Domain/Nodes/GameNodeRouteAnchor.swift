@@ -48,3 +48,18 @@ struct GameNodeRouteAnchor:
     let roadLocation:
         RoadLocation
 }
+
+extension GameNodeRouteAnchor {
+
+    var roadRouteAnchor:
+        RoadRouteAnchor {
+
+        RoadRouteAnchor(
+            coordinate:
+                nodeCoordinate,
+            roadLocation:
+                roadLocation
+        )
+    }
+}
+

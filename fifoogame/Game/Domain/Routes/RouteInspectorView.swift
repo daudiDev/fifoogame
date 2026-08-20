@@ -28,6 +28,9 @@ struct RouteInspectorView: View {
 
     let onChoose:
         ((RouteID) -> Bool)?
+    
+    let onEditChosenRoute:
+        ((RouteID) -> Void)?
 
 
     @Environment(\.dismiss)
@@ -229,7 +232,7 @@ private extension RouteInspectorView {
             Section("Route") {
                 LabeledContent("Stops", value: "\(route.stopNodeIDs.count)")
                 LabeledContent("Legs", value: "\(route.legs.count)")
-                LabeledContent("Road Segments", value: "\(route.legs.reduce(0) { result, leg in result + (leg.path?.segments.count ?? 0) })")
+                LabeledContent("Road Segments", value: "\(route.allRoadSegments.count)")
                 
                 if let totalCost = route.plannedTotalCost {
                     LabeledContent("Routing Cost") {
@@ -296,6 +299,35 @@ private extension RouteInspectorView {
                     }
                 }
             }
+            
+            if case let .chosen(
+                routeID
+            ) = target {
+
+                Section {
+
+                    Button {
+
+                        editChosenRoute(
+                            routeID
+                        )
+
+                    } label: {
+
+                        Label(
+                            "Edit Future Route",
+                            systemImage:
+                                "pencil"
+                        )
+                        .frame(
+                            maxWidth:
+                                .infinity
+                        )
+                    }
+                }
+            }
+            
+            
         } else {
             Section {
                 ContentUnavailableView("Route Not Found", systemImage: "exclamationmark.triangle")
@@ -378,3 +410,18 @@ private extension RouteInspectorView {
 }
 
 
+private extension RouteInspectorView {
+
+    func editChosenRoute(
+        _ routeID:
+            RouteID
+    ) {
+
+        dismiss()
+
+
+        onEditChosenRoute?(
+            routeID
+        )
+    }
+}

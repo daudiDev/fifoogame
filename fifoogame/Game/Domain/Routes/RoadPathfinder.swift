@@ -11,221 +11,436 @@ import Foundation
 struct RoadPathfinder {
 
     // =====================================================
-    // MARK: - Public API
+    // MARK: - Find Path
     // =====================================================
 
-    func findPath(
-        from start:
-            GameNodeRouteAnchor,
-        to end:
-            GameNodeRouteAnchor,
-        graph:
-            RoadGraph,
-        timePolicy:
-            RouteTimePolicy? = .dayMap,
-        routingOptions:
-            RoadRoutingOptions = .standard
-    ) -> RoadRoutePath? {
+        /// Convenience wrapper for normal GameNode -> GameNode routing.
+        ///
+        /// Existing code from Sections 5B/5C/5D can continue calling:
+        ///
+        ///     findPath(
+        ///         from: gameNodeAnchorA,
+        ///         to: gameNodeAnchorB,
+        ///         ...
+        ///     )
+        ///
+        func findPath(
+            from start: GameNodeRouteAnchor,
+            to end: GameNodeRouteAnchor,
+            graph: RoadGraph,
+            timePolicy: RouteTimePolicy? = .dayMap,
+            routingOptions: RoadRoutingOptions = .standard
+        ) -> RoadRoutePath? {
 
-        // =================================================
-        // Node-time ordering
-        // =================================================
+            return findPath(
+                from: start.roadRouteAnchor,
+                to: end.roadRouteAnchor,
+                graph: graph,
+                timePolicy: timePolicy,
+                routingOptions: routingOptions
+            )
+        }
 
-        if timePolicy != nil {
+
+        /// Main pathfinding implementation.
+        ///
+        /// Unlike GameNodeRouteAnchor, RoadRouteAnchor does not require
+        /// an actual GameMapNode. Therefore this can also begin at the
+        /// player's current position halfway through an edge.
+        ///
+        func findPath(
+            from start: RoadRouteAnchor,
+            to end: RoadRouteAnchor,
+            graph: RoadGraph,
+            timePolicy: RouteTimePolicy? = .dayMap,
+            routingOptions: RoadRoutingOptions = .standard
+        ) -> RoadRoutePath? {
+
+            // =====================================================
+            // 1. Time sanity check
+            // =====================================================
+
+            if timePolicy != nil {
+
+                guard
+                    end.coordinate.time >=
+                        start.coordinate.time
+                else {
+
+                    return nil
+                }
+            }
+
+
+            // =====================================================
+            // 2. Direct same-edge route
+            //
+            // Example:
+            //
+            //      START               END
+            //        ●==================●
+            //
+            // Both anchors can lie on the same road edge without
+            // having to travel through either endpoint.
+            // =====================================================
+
+            if let directPath =
+                directSameEdgePath(
+                    from: start,
+                    to: end,
+                    graph: graph,
+                    timePolicy: timePolicy,
+                    routingOptions: routingOptions
+                )
+            {
+
+                return directPath
+            }
+
+
+            // =====================================================
+            // 3. Determine possible ways to LEAVE the start
+            //
+            // If start is:
+            //
+            //      .vertex(A)
+            //
+            // there is one candidate:
+            //
+            //      A
+            //
+            // If start is:
+            //
+            //      .edge(E, 0.4)
+            //
+            // there may be:
+            //
+            //      0.4 -> edge.from
+            //
+            // and/or
+            //
+            //      0.4 -> edge.to
+            //
+            // depending on traffic direction and time direction.
+            // =====================================================
+
+            let startCandidates =
+                startCandidates(
+                    for: start,
+                    graph: graph,
+                    timePolicy: timePolicy,
+                    routingOptions: routingOptions
+                )
+
 
             guard
-                end.nodeCoordinate.time
-                >=
-                start.nodeCoordinate.time
+                !startCandidates.isEmpty
             else {
 
                 return nil
             }
-        }
 
 
-        // =================================================
-        // Candidate paths
-        // =================================================
+            // =====================================================
+            // 4. Determine possible ways to ENTER the destination
+            // =====================================================
 
-        var candidates:
-            [RoadRoutePath] = []
-
-
-        // =================================================
-        // Same-edge direct path
-        // =================================================
-
-        if let direct =
-            directSameEdgePath(
-                from:
-                    start,
-                to:
-                    end,
-                graph:
-                    graph,
-                timePolicy:
-                    timePolicy,
-                routingOptions: routingOptions
-            )
-        {
-
-            candidates.append(
-                direct
-            )
-        }
+            let endCandidates =
+                endCandidates(
+                    for: end,
+                    graph: graph,
+                    timePolicy: timePolicy,
+                    routingOptions: routingOptions
+                )
 
 
-        // =================================================
-        // Graph endpoints
-        // =================================================
+            guard
+                !endCandidates.isEmpty
+            else {
 
-        let starts =
-            startCandidates(
-                for:
-                    start,
-                graph:
-                    graph,
-                timePolicy:
-                    timePolicy,
-                routingOptions: routingOptions
-            )
+                return nil
+            }
 
 
-        let ends =
-            endCandidates(
-                for:
-                    end,
-                graph:
-                    graph,
-                timePolicy:
-                    timePolicy,
-                routingOptions: routingOptions
-            )
+            // =====================================================
+            // 5. Try every valid start/end endpoint combination
+            // =====================================================
+
+            var bestPath:
+                RoadRoutePath?
 
 
-        // ... existing candidate search continues
-
-        // =============================================
-        // Search all valid endpoint combinations
-        // =============================================
-
-        for startCandidate in
-            starts {
-
-            for endCandidate in
-                ends {
-
-                let middlePath:
-                    VertexPath?
+            var bestCost =
+                Double.greatestFiniteMagnitude
 
 
-                if
-                    startCandidate.vertexID
-                    ==
-                    endCandidate.vertexID
-                {
+            for startCandidate in
+                startCandidates {
 
-                    middlePath =
+                for endCandidate in
+                    endCandidates {
+
+                    // =================================================
+                    // Middle road-network path
+                    //
+                    // START ANCHOR
+                    //      │
+                    //      │ startCandidate.segments
+                    //      ▼
+                    //   vertex A
+                    //      │
+                    //      │ Dijkstra
+                    //      ▼
+                    //   vertex B
+                    //      │
+                    //      │ endCandidate.segments
+                    //      ▼
+                    // END ANCHOR
+                    // =================================================
+
+                    let middlePath =
                         shortestVertexPath(
-                            from:
-                                startCandidate
-                                    .vertexID,
-                            to:
-                                endCandidate
-                                    .vertexID,
-                            graph:
-                                graph,
-                            timePolicy:
-                                timePolicy,
-                            routingOptions: routingOptions
-                        )
-
-                } else {
-
-                    middlePath =
-                        shortestVertexPath(
-                            from:
-                                startCandidate
-                                    .vertexID,
-                            to:
-                                endCandidate
-                                    .vertexID,
-                            graph:
-                                graph,
+                            from: startCandidate.vertexID,
+                            to: endCandidate.vertexID,
+                            graph: graph,
                             timePolicy: timePolicy,
                             routingOptions: routingOptions
                         )
-                }
 
 
-                guard let middlePath else {
+                    /*
+                     If both endpoint candidates resolve to the
+                     same graph vertex, no middle road edges are
+                     required.
+                    */
 
-                    continue
-                }
-
-
-                let segments =
-                    startCandidate.segments
-                    +
-                    middlePath.segments
-                    +
-                    endCandidate.segments
+                    let middleSegments:
+                        [RoadRouteSegment]
 
 
-                let totalCost =
-                    startCandidate.cost
-                    +
-                    middlePath.cost
-                    +
-                    endCandidate.cost
+                    let middleVertexIDs:
+                        [RoadVertexID]
 
 
-                let path =
-                    RoadRoutePath(
-                        startLocation:
-                            start.roadLocation,
-                        endLocation:
-                            end.roadLocation,
-                        vertexIDs:
-                            middlePath.vertexIDs,
-                        segments:
-                            segments,
-                        totalCost:
-                            totalCost
+                    let middleCost:
+                        Double
+
+
+                    if
+                        startCandidate.vertexID ==
+                            endCandidate.vertexID
+                    {
+
+                        middleSegments =
+                            []
+
+
+                        middleVertexIDs =
+                            [
+                                startCandidate.vertexID
+                            ]
+
+
+                        middleCost =
+                            0
+
+                    } else {
+
+                        guard let middlePath else {
+
+                            continue
+                        }
+
+
+                        middleSegments =
+                            middlePath.segments
+
+
+                        middleVertexIDs =
+                            middlePath.vertexIDs
+
+
+                        middleCost =
+                            middlePath.cost
+                    }
+
+
+                    // =================================================
+                    // Assemble complete path
+                    // =================================================
+
+                    var segments:
+                        [RoadRouteSegment] = []
+
+
+                    segments.append(
+                        contentsOf:
+                            startCandidate.segments
                     )
-                
-                if let timePolicy {
+
+
+                    segments.append(
+                        contentsOf:
+                            middleSegments
+                    )
+
+
+                    segments.append(
+                        contentsOf:
+                            endCandidate.segments
+                    )
+
+
+                    // =================================================
+                    // Defensive time validation
+                    //
+                    // Every individual segment should already have
+                    // passed the 5C checks, but validate the assembled
+                    // path as well.
+                    // =================================================
+
+                    if let timePolicy {
+
+                        var valid =
+                            true
+
+
+                        for segment in
+                            segments {
+
+                            if
+                                !RoadRouteTimeValidator
+                                    .isForwardInTime(
+                                        segment:
+                                            segment,
+                                        graph:
+                                            graph,
+                                        policy:
+                                            timePolicy
+                                    )
+                            {
+
+                                valid =
+                                    false
+
+                                break
+                            }
+                        }
+
+
+                        guard valid else {
+
+                            continue
+                        }
+                    }
+
+
+                    // =================================================
+                    // Total cost
+                    // =================================================
+
+                    let totalCost =
+                        startCandidate.cost
+                        +
+                        middleCost
+                        +
+                        endCandidate.cost
+
 
                     guard
-                        RoadRouteTimeValidator
-                            .isForwardInTime(
-                                path:
-                                    path,
-                                graph:
-                                    graph,
-                                policy:
-                                    timePolicy
-                            )
+                        totalCost <
+                            bestCost
                     else {
 
                         continue
                     }
+
+
+                    // =================================================
+                    // Vertex list
+                    // =================================================
+
+                    var vertexIDs:
+                        [RoadVertexID] = []
+
+
+                    for vertexID in
+                        middleVertexIDs {
+
+                        if vertexIDs.last !=
+                            vertexID
+                        {
+
+                            vertexIDs.append(
+                                vertexID
+                            )
+                        }
+                    }
+
+
+                    // =================================================
+                    // Create candidate RoadRoutePath
+                    // =================================================
+
+                    let candidate =
+                        RoadRoutePath(
+                            startLocation:
+                                start.roadLocation,
+
+                            endLocation:
+                                end.roadLocation,
+
+                            vertexIDs:
+                                vertexIDs,
+
+                            segments:
+                                segments,
+
+                            totalCost:
+                                totalCost
+                        )
+
+
+                    // =================================================
+                    // Final complete-path validation
+                    // =================================================
+
+                    if let timePolicy {
+
+                        guard
+                            RoadRouteTimeValidator
+                                .isForwardInTime(
+                                    path:
+                                        candidate,
+                                    graph:
+                                        graph,
+                                    policy:
+                                        timePolicy
+                                )
+                        else {
+
+                            continue
+                        }
+                    }
+
+
+                    // =================================================
+                    // This is currently the cheapest valid candidate.
+                    // =================================================
+
+                    bestPath =
+                        candidate
+
+
+                    bestCost =
+                        totalCost
                 }
-
-                candidates.append(
-                    path
-                )
             }
+
+
+            return bestPath
         }
-
-
-        return candidates.min {
-
-            $0.totalCost <
-                $1.totalCost
-        }
-    }
+ 
 }
 
 private extension RoadPathfinder {
@@ -264,7 +479,7 @@ private extension RoadPathfinder {
 
     func startCandidates(
         for anchor:
-            GameNodeRouteAnchor,
+        RoadRouteAnchor,
         graph:
             RoadGraph,
         timePolicy:
@@ -452,7 +667,7 @@ private extension RoadPathfinder {
 
     func endCandidates(
         for anchor:
-            GameNodeRouteAnchor,
+        RoadRouteAnchor,
         graph:
             RoadGraph,
         timePolicy:
@@ -641,19 +856,14 @@ private extension RoadPathfinder {
 
 private extension RoadPathfinder {
 
-    func directSameEdgePath(
-        from start:
-            GameNodeRouteAnchor,
-        to end:
-            GameNodeRouteAnchor,
-        graph:
-            RoadGraph,
-        timePolicy:
-            RouteTimePolicy?,
-        routingOptions:
-            RoadRoutingOptions
+    private func directSameEdgePath(
+        from start: RoadRouteAnchor,
+        to end: RoadRouteAnchor,
+        graph: RoadGraph,
+        timePolicy: RouteTimePolicy?,
+        routingOptions: RoadRoutingOptions
     ) -> RoadRoutePath? {
-
+        
         guard
             case let .edge(
                 startEdgeID,

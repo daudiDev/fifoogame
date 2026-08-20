@@ -26,14 +26,7 @@ enum GameRouteProgressResolver {
     ) -> GameRouteProgressSnapshot {
 
         let allSegments =
-            route.legs
-                .flatMap {
-
-                    $0.path?
-                        .segments
-                    ??
-                    []
-                }
+            route.allRoadSegments
 
 
         var completed:
@@ -256,29 +249,21 @@ extension GameRouteProgressResolver {
             RouteTimePolicy = .dayMap
     ) -> [RoadRouteSegment] {
 
-        route.legs
-            .flatMap {
-
-                $0.path?
-                    .segments
-                ??
-                []
-            }
+        route.allRoadSegments
             .compactMap { segment in
 
-                RoadRouteTimeClipper
-                    .portion(
-                        of:
-                            segment,
-                        after:
-                            startTime,
-                        through:
-                            endTime,
-                        graph:
-                            graph,
-                        policy:
-                            policy
-                    )
+                RoadRouteTimeClipper.portion(
+                    of:
+                        segment,
+                    after:
+                        startTime,
+                    through:
+                        endTime,
+                    graph:
+                        graph,
+                    policy:
+                        policy
+                )
             }
     }
 }

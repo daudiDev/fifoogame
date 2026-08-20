@@ -131,4 +131,59 @@ enum RouteVisualTheme {
 
     static let boundaryRadius:
         CGFloat = 7
+    
+    // =====================================================
+    // MARK: - Draft Preview
+    // =====================================================
+
+    static let previewSelectedColor =
+        SKColor(
+            red:
+                1.0,
+            green:
+                0.72,
+            blue:
+                0.24,
+            alpha:
+                1
+        )
+
+
+    static let previewSelectedHaloColor =
+        SKColor(
+            red:
+                1.0,
+            green:
+                0.72,
+            blue:
+                0.24,
+            alpha:
+                0.22
+        )
+
+
+    static let previewAlternativeColor =
+        SKColor(
+            red:
+                1.0,
+            green:
+                1.0,
+            blue:
+                1.0,
+            alpha:
+                0.38
+        )
+
+
+    static let previewSelectedWidth:
+        CGFloat = 8
+
+
+    static let previewSelectedHaloWidth:
+        CGFloat = 15
+
+
+    static let previewAlternativeWidth:
+        CGFloat = 4
+    
 }

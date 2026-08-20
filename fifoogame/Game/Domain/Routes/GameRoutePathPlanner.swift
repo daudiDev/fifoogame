@@ -10,31 +10,21 @@ import Foundation
 
 
 struct GameRoutePathPlanningIssue:
-    Identifiable,
+    Codable,
     Equatable,
     Sendable {
 
     let legIndex:
         Int
 
-
     let fromNodeID:
-        GameNodeID
-
+        GameNodeID?
 
     let toNodeID:
         GameNodeID
 
-
     let message:
         String
-
-
-    var id:
-        String {
-
-        "\(legIndex)-\(fromNodeID.rawValue)-\(toNodeID.rawValue)"
-    }
 }
 
 
@@ -122,18 +112,115 @@ struct GameRoutePathPlanner {
             )
 
 
+        let anchorResolver =
+            GameNodeRouteAnchorResolver()
+
+
+        // =====================================================
+        // ENTRY LEG
+        // =====================================================
+
+        if var entryLeg =
+            plannedRoute.entryLeg {
+
+            guard
+                let destinationNode =
+                    nodeLookup[
+                        entryLeg.toNodeID
+                    ],
+
+                let destinationAnchor =
+                    anchorResolver.resolve(
+                        node:
+                            destinationNode,
+                        graph:
+                            roadGraph
+                    )
+            else {
+
+                issues.append(
+                    GameRoutePathPlanningIssue(
+                        legIndex:
+                            -1,
+                        fromNodeID:
+                            nil,
+                        toNodeID:
+                            entryLeg.toNodeID,
+                        message:
+                            "Unable to resolve the first route stop."
+                    )
+                )
+
+
+                return GameRoutePathPlanningResult(
+                    route:
+                        plannedRoute,
+                    issues:
+                        issues
+                )
+            }
+
+
+            guard let path =
+                pathfinder.findPath(
+                    from:
+                        entryLeg.startAnchor,
+                    to:
+                        destinationAnchor
+                            .roadRouteAnchor,
+                    graph:
+                        roadGraph,
+                    timePolicy:
+                        timePolicy,
+                    routingOptions:
+                        routingOptions
+                )
+            else {
+
+                issues.append(
+                    GameRoutePathPlanningIssue(
+                        legIndex:
+                            -1,
+                        fromNodeID:
+                            nil,
+                        toNodeID:
+                            entryLeg.toNodeID,
+                        message:
+                            "No valid forward-time road path exists from the current position to the first stop."
+                    )
+                )
+
+
+                return GameRoutePathPlanningResult(
+                    route:
+                        plannedRoute,
+                    issues:
+                        issues
+                )
+            }
+
+
+            entryLeg.path =
+                path
+
+
+            plannedRoute.entryLeg =
+                entryLeg
+        }
+
+
+        // =====================================================
+        // NORMAL NODE → NODE LEGS
+        // =====================================================
+
         for index in
             plannedRoute.legs.indices {
 
-            let leg =
+            var leg =
                 plannedRoute.legs[
                     index
                 ]
 
-
-            // =========================================
-            // Resolve Nodes
-            // =========================================
 
             guard
                 let fromNode =
@@ -144,7 +231,23 @@ struct GameRoutePathPlanner {
                 let toNode =
                     nodeLookup[
                         leg.toNodeID
-                    ]
+                    ],
+
+                let fromAnchor =
+                    anchorResolver.resolve(
+                        node:
+                            fromNode,
+                        graph:
+                            roadGraph
+                    ),
+
+                let toAnchor =
+                    anchorResolver.resolve(
+                        node:
+                            toNode,
+                        graph:
+                            roadGraph
+                    )
             else {
 
                 issues.append(
@@ -156,113 +259,20 @@ struct GameRoutePathPlanner {
                         toNodeID:
                             leg.toNodeID,
                         message:
-                            "One or both route nodes no longer exist."
+                            "Unable to resolve route anchors."
                     )
                 )
-
 
                 continue
             }
 
-
-            // =========================================
-            // Resolve Road Anchors
-            // =========================================
-
-            guard let startAnchor =
-                anchorResolver.resolve(
-                    node:
-                        fromNode,
-                    graph:
-                        roadGraph
-                )
-            else {
-
-                issues.append(
-                    GameRoutePathPlanningIssue(
-                        legIndex:
-                            index,
-                        fromNodeID:
-                            leg.fromNodeID,
-                        toNodeID:
-                            leg.toNodeID,
-                        message:
-                            "\(fromNode.content.title) is not on a routable road."
-                    )
-                )
-
-
-                continue
-            }
-
-
-            guard let endAnchor =
-                anchorResolver.resolve(
-                    node:
-                        toNode,
-                    graph:
-                        roadGraph
-                )
-            else {
-
-                issues.append(
-                    GameRoutePathPlanningIssue(
-                        legIndex:
-                            index,
-                        fromNodeID:
-                            leg.fromNodeID,
-                        toNodeID:
-                            leg.toNodeID,
-                        message:
-                            "\(toNode.content.title) is not on a routable road."
-                    )
-                )
-
-
-                continue
-            }
-
-            //MARK : todo ? time policy
-            if timePolicy != nil {
-
-                guard
-                    endAnchor
-                        .nodeCoordinate
-                        .time
-                    >=
-                    startAnchor
-                        .nodeCoordinate
-                        .time
-                else {
-
-                    issues.append(
-                        GameRoutePathPlanningIssue(
-                            legIndex:
-                                index,
-                            fromNodeID:
-                                leg.fromNodeID,
-                            toNodeID:
-                                leg.toNodeID,
-                            message:
-                                "\(toNode.content.title) occurs earlier in the day than \(fromNode.content.title)."
-                        )
-                    )
-
-
-                    continue
-                }
-            }
-
-            // =========================================
-            // Find Road Path
-            // =========================================
 
             guard let path =
                 pathfinder.findPath(
                     from:
-                        startAnchor,
+                        fromAnchor,
                     to:
-                        endAnchor,
+                        toAnchor,
                     graph:
                         roadGraph,
                     timePolicy:
@@ -281,23 +291,22 @@ struct GameRoutePathPlanner {
                         toNodeID:
                             leg.toNodeID,
                         message:
-                            timePolicy == nil
-                            ?
-                            "No traversable road path exists between \(fromNode.content.title) and \(toNode.content.title)."
-                            :
-                            "No forward-in-time road path exists between \(fromNode.content.title) and \(toNode.content.title)."
+                            "No valid forward-time road path exists for this leg."
                     )
                 )
-
 
                 continue
             }
 
 
-            plannedRoute
-                .legs[index]
-                .path =
-                    path
+            leg.path =
+                path
+
+
+            plannedRoute.legs[
+                index
+            ] =
+                leg
         }
 
 
