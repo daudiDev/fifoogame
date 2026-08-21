@@ -92,7 +92,16 @@ final class GameNodeRenderer {
 
         containerNode.alpha =
             1
+        
+        // IMPORTANT:
+          // Game nodes must always render above roads/routes.
+          containerNode.zPosition =
+              MapLayerZ.nodes
+        
     }
+    
+    //MARK: works???
+    
 
 
     // =====================================================
@@ -223,7 +232,8 @@ private extension GameNodeRenderer {
 
         let root =
             SKNode()
-
+        
+        root.zPosition = 0
 
         root.name =
             "game.node.\(gameNode.id.rawValue.uuidString)"
@@ -254,6 +264,30 @@ private extension GameNodeRenderer {
                             .rawValue
                 ]
             )
+
+
+        // =============================================
+        // Map-Style Chrome
+        // =============================================
+
+        let chrome =
+            GameNodeMarkerChrome.make(
+                isSelected:
+                    false
+            )
+
+
+        chrome.name =
+            "markerChrome"
+
+
+        chrome.zPosition =
+            -2
+
+
+        root.addChild(
+            chrome
+        )
 
 
         // =============================================
@@ -357,8 +391,7 @@ private extension GameNodeRenderer {
             true
 
 
-        halo.zPosition =
-            0
+        halo.zPosition = 1
 
 
         return halo
@@ -395,8 +428,7 @@ private extension GameNodeRenderer {
                     .markerBorderWidth
 
 
-        marker.zPosition =
-            1
+        marker.zPosition = 2
 
 
         return marker

@@ -337,87 +337,144 @@ enum MapWorldConfiguration {
 
 enum MapCoordinateConverter {
 
-    /// Fifoo uses:
+    /// Converts Fifoo semantic coordinates into the
+    /// permanent SpriteKit world coordinate system.
     ///
-    ///     12 AM
-    ///       ↓
-    ///       ↓ time
-    ///       ↓
-    ///     End of day
+    /// IMPORTANT:
     ///
-    /// SpriteKit normally increases Y upward.
+    /// MapVisualWorldBounds must NOT be used here.
     ///
-    /// We therefore use:
+    /// The semantic coordinate system remains:
     ///
-    /// top    = y 0
-    /// bottom = y -2400
+    /// progress 0%   -> x = 0
+    /// progress 100% -> x = 1000
     ///
+    /// Progress below 0 or above 100 naturally produces
+    /// x values outside that reference range.
     static func worldPoint(
         for coordinate: MapCoordinate
     ) -> WorldPoint {
 
         let progressRange =
             MapWorldConfiguration.maximumReferenceProgress
-            - MapWorldConfiguration.minimumReferenceProgress
+            -
+            MapWorldConfiguration.minimumReferenceProgress
+
+
+        guard progressRange != 0 else {
+
+            return WorldPoint(
+                x: 0,
+                y: 0
+            )
+        }
+
 
         let progressFraction =
             (
                 coordinate.progress.percent
-                - MapWorldConfiguration.minimumReferenceProgress
+                -
+                MapWorldConfiguration.minimumReferenceProgress
             )
-            / progressRange
+            /
+            progressRange
+
 
         let x =
-            Double(MapWorldConfiguration.width)
-            * progressFraction
+            Double(
+                MapWorldConfiguration.width
+            )
+            *
+            progressFraction
+
 
         let y =
-            -Double(MapWorldConfiguration.height)
-            * coordinate.time.fractionOfDay
+            -Double(
+                MapWorldConfiguration.height
+            )
+            *
+            coordinate.time.fractionOfDay
+
 
         return WorldPoint(
-            x: x,
-            y: y
+            x:
+                x,
+            y:
+                y
         )
     }
 
 
-    /// Inverse conversion.
-    ///
-    /// Primarily useful for:
-    /// - touches
-    /// - debugging
-    /// - map editing
-    /// - future drag interactions
+    /// Inverse world -> semantic coordinate conversion.
     static func mapCoordinate(
         for worldPoint: WorldPoint
     ) -> MapCoordinate {
 
+        let worldWidth =
+            Double(
+                MapWorldConfiguration.width
+            )
+
+
+        guard worldWidth != 0 else {
+
+            return MapCoordinate(
+                time:
+                    .startOfDay,
+                progress:
+                    MapProgress(
+                        MapWorldConfiguration
+                            .minimumReferenceProgress
+                    )
+            )
+        }
+
+
         let progressFraction =
             worldPoint.x
-            / Double(MapWorldConfiguration.width)
+            /
+            worldWidth
+
 
         let progressRange =
             MapWorldConfiguration.maximumReferenceProgress
-            - MapWorldConfiguration.minimumReferenceProgress
+            -
+            MapWorldConfiguration.minimumReferenceProgress
+
 
         let progress =
             MapWorldConfiguration.minimumReferenceProgress
-            + progressFraction * progressRange
+            +
+            progressFraction
+            *
+            progressRange
+
 
         let dayFraction =
             -worldPoint.y
-            / Double(MapWorldConfiguration.height)
+            /
+            Double(
+                MapWorldConfiguration.height
+            )
+
 
         let seconds =
             dayFraction
-            * DayTime.secondsPerDay
+            *
+            DayTime.secondsPerDay
+
 
         return MapCoordinate(
-            time: DayTime(
-                secondsFromMidnight: seconds
-            ),
-            progress: MapProgress(progress)
+            time:
+                DayTime(
+                    secondsFromMidnight:
+                        seconds
+                ),
+
+            progress:
+                MapProgress(
+                    progress
+                )
         )
     }
 }

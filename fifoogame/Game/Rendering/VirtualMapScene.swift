@@ -10,6 +10,12 @@ import SpriteKit
 
 @MainActor
 final class VirtualMapScene: SKScene {
+    
+    private let worldArtRenderer =
+        MapWorldArtRenderer()
+    
+    private let timeAxisRenderer =
+        TimeAxisRenderer()
 
     // =====================================================
     // MARK: - Interaction
@@ -269,6 +275,24 @@ final class VirtualMapScene: SKScene {
             .clearPreview()
     }
     
+    private func updateTimeAxis() {
+
+        guard
+            let camera,
+            let view
+        else {
+
+            return
+        }
+
+
+        timeAxisRenderer.update(
+            scene: self,
+            camera: camera,
+            view: view
+        )
+    }
+    
     
 
     
@@ -325,9 +349,9 @@ private extension VirtualMapScene {
 
         configureGameNodes()
 
-        configureCurrentTimeIndicator()
+//        configureCurrentTimeIndicator() //MARK: hide for now
 
-        configureDiagnostics()
+//        configureDiagnostics()
     }
 }
 
@@ -347,6 +371,17 @@ extension VirtualMapScene {
             to:
                 view
         )
+        
+        worldArtRenderer.attach(
+            to:
+                self
+        )
+
+
+        worldArtRenderer.render(
+            graph:
+                roadGraph
+        )
 
 
         cameraController.install(
@@ -357,6 +392,18 @@ extension VirtualMapScene {
             initialFocusTime:
                 currentTime
         )
+        
+        guard
+            let camera = camera
+        else {
+
+            return
+        }
+        
+        timeAxisRenderer.attach(
+            to: camera
+        )
+        
     }
 
 
@@ -385,6 +432,36 @@ extension VirtualMapScene {
                 view
         )
     }
+    
+    override func didFinishUpdate() {
+
+        super.didFinishUpdate()
+
+
+        guard
+            let camera = camera,
+            let view = view
+        else {
+
+            return
+        }
+
+
+        timeAxisRenderer.update(
+            scene: self,
+            camera: camera,
+            view: view
+        )
+        
+        // Map level-of-detail
+        
+        worldArtRenderer.update(
+            cameraScale:
+                camera.xScale
+        )
+        
+    }
+    
 }
 
 // =====================================================
@@ -453,12 +530,23 @@ private extension VirtualMapScene {
 
         gridLayer.zPosition =
             25
-
+        
         roadLayer.zPosition =
-            100
+            MapLayerZ.roads
+
 
         routeLayer.zPosition =
-            200
+            MapLayerZ.routes
+
+
+        gameNodeLayer.zPosition =
+            MapLayerZ.nodes
+
+//        roadLayer.zPosition =
+//            100
+
+//        routeLayer.zPosition =
+//            200
 
         nodeLayer.zPosition =
             300

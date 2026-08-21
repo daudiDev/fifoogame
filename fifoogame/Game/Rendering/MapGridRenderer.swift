@@ -38,7 +38,7 @@ final class MapGridRenderer {
 
         drawProgressLabels()
 
-        drawTimeLabels()
+//        drawTimeLabels() //hide
     }
 }
 
@@ -62,7 +62,7 @@ private extension MapGridRenderer {
         for progress in stride(
             from: -50,
             through: 150,
-            by: 5
+            by: 10
         ) {
 
             let coordinate =
@@ -120,39 +120,24 @@ private extension MapGridRenderer {
             line.name =
                 "progressGrid-\(progress)"
 
+//            let isReferenceBoundary =
+//                progress == 0
+//                || progress == 100
+//
+//
+//            let isMajor =
+//                progress % 25 == 0
+//
+//
+//            let isOutsidePrimaryRange =
+//                progress < 0
+//                || progress > 100
 
-            let isReferenceBoundary =
-                progress == 0
-                || progress == 100
 
-
-            let isMajor =
-                progress % 25 == 0
-
-
-            let isOutsidePrimaryRange =
-                progress < 0
-                || progress > 100
-
-
-            if isReferenceBoundary {
-
-                line.strokeColor = MapVisualTheme.referenceBoundaryColor
-
-                line.lineWidth = 6
-
-            } else if isMajor {
-
-                line.strokeColor = MapVisualTheme.majorGridColor
-
-                line.lineWidth = 4
-
-            } else {
-
-                line.strokeColor = MapVisualTheme.minorGridColor
-                line.lineWidth = 2
+            line.strokeColor = SKColor.white
+                    .withAlphaComponent(0.08)
+            line.lineWidth = 1
                 
-            }
 
             containerNode.addChild(
                 line
@@ -243,23 +228,11 @@ private extension MapGridRenderer {
                 )
 
 
-            let isMajor =
-                hour % 6 == 0
-
-
             line.strokeColor =
-                SKColor.white
-                    .withAlphaComponent(
-                        isMajor
-                        ? 0.30
-                        : 0.08
-                    )
+            SKColor.white
+                    .withAlphaComponent(0.08)
 
-
-            line.lineWidth =
-                isMajor
-                ? 4
-                : 2
+            line.lineWidth = 1
 
 
             containerNode.addChild(

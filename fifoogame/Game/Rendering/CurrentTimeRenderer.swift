@@ -6,11 +6,6 @@
 //
 
 
-//
-//  CurrentTimeRenderer.swift
-//  Fifoo
-//
-
 import SpriteKit
 
 
@@ -47,7 +42,7 @@ final class CurrentTimeRenderer {
 
     init() {
 
-        configureNodes()
+//        configureNodes() //show position of current time for testing
     }
 
 

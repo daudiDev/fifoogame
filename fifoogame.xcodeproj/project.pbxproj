@@ -21,9 +21,22 @@
 		278C62F53034EFC900E5F340 /* fifoogameTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = fifoogameTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		274E98183037F0360075F87C /* Exceptions for "fifoogame" folder in "fifoogame" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 278C62C63034DC7200E5F340 /* fifoogame */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		278C62C93034DC7200E5F340 /* fifoogame */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				274E98183037F0360075F87C /* Exceptions for "fifoogame" folder in "fifoogame" target */,
+			);
 			path = fifoogame;
 			sourceTree = "<group>";
 		};
@@ -331,6 +344,7 @@
 				DEVELOPMENT_TEAM = JH9RVESMJJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = fifoogame/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -363,6 +377,7 @@
 				DEVELOPMENT_TEAM = JH9RVESMJJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = fifoogame/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

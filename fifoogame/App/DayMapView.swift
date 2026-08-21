@@ -86,115 +86,75 @@ struct DayMapView: View {
     // MARK: - Body
 
     var body: some View {
-
-        ZStack {
-
-            // MARK: SpriteKit Map
-
-            SpriteView(
-                scene:
-                    scene
-            )
-            .ignoresSafeArea()
-
-
-            // MARK: SwiftUI Diagnostic UI
-
-            VStack(
-                spacing: 12
-            ) {
-
-//                topDiagnosticHUD
-
-
-                Spacer()
-
-
-                if
-                    let nodeID =
-                        store.selection
-                            .selectedNodeID,
-
-                    let gameNode =
-                        store.gameNode(
-                            id:
-                                nodeID
-                        )
-                {
-
-                    GameNodeInspectorHUD(
-                        node:
-                            gameNode
-                    )
-
-
-                } else if hasRoadSelection {
-
-                    RoadInspectorHUD(
-                        graph:
-                            store.roadGraph,
-                        selection:
-                            store.selection
-                    )
-                }
-
-
-                /*
-                 This HUD is primarily useful
-                 when empty map/background space
-                 is tapped.
-                 */
-
-//                bottomDiagnosticHUD
-            }
-            .padding()
+        NavigationStack {
             
-            VStack {
-
-                HStack {
-
+            ZStack {
+                
+                // MARK: SpriteKit Map
+                
+                SpriteView(
+                    scene:
+                        scene
+                )
+                .ignoresSafeArea()
+                
+                AppOverLayView(isShowingAddNode: $isShowingAddNode)
+                
+                
+                // MARK: SwiftUI Diagnostic UI
+                
+                VStack(
+                    spacing: 12
+                ) {
+                    
+                    // topDiagnosticHUD
+                    
+                    
                     Spacer()
-
-
-                    Button {
-
-                        isShowingAddNode =
-                            true
-
-                    } label: {
-
-                        Image(
-                            systemName:
-                                "plus"
+                    
+                    
+                    if
+                        let nodeID =
+                            store.selection
+                            .selectedNodeID,
+                        
+                            let gameNode =
+                            store.gameNode(
+                                id:
+                                    nodeID
+                            )
+                    {
+                        
+                        GameNodeInspectorHUD(
+                            node:
+                                gameNode
                         )
-                        .font(
-                            .headline
-                        )
-                        .frame(
-                            width:
-                                44,
-                            height:
-                                44
-                        )
-                        .background(
-                            .ultraThinMaterial
-                        )
-                        .clipShape(
-                            Circle()
+                        
+                        
+                    } else if hasRoadSelection {
+                        
+                        RoadInspectorHUD(
+                            graph:
+                                store.roadGraph,
+                            selection:
+                                store.selection
                         )
                     }
-                    .buttonStyle(
-                        .plain
-                    )
+                    
+                    
+                    /*
+                     This HUD is primarily useful
+                     when empty map/background space
+                     is tapped.
+                     */
+                    
+                    //                bottomDiagnosticHUD
                 }
                 .padding()
+                
 
-
-                Spacer()
-            }
-            
-            
-        } //zs
+            } //zs
+        } //nav
         .sheet(
             isPresented:
                 $isShowingAddNode

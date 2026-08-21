@@ -326,6 +326,16 @@ final class RouteLayerRenderer {
                                 .previewSelectedHaloWidth
                     )
                 {
+                    halo.lineCap =
+                        .round
+
+
+                    halo.lineJoin =
+                        .round
+
+
+                    halo.isAntialiased =
+                        true
 
                     routeNode.addChild(
                         halo
