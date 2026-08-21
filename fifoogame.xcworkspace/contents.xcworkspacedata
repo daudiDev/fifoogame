@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:fifoogame.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:Pods/Pods.xcodeproj">
+   </FileRef>
+   <Group
+      location = "group:Image Helpers"
+      name = "Image Helpers">
+      <FileRef
+         location = "group:ImageCache.swift">
+      </FileRef>
+      <FileRef
+         location = "group:ImageLoader.swift">
+      </FileRef>
+      <FileRef
+         location = "group:CustomAsyncImage.swift">
+      </FileRef>
+   </Group>
+</Workspace>

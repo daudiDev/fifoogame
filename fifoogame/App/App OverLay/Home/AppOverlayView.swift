@@ -64,6 +64,25 @@ struct AppOverLayView: View {
                         .presentationDragIndicator(.visible)
                         .presentationBackground(.ultraThinMaterial)
                 }
+                .fullScreenCover(isPresented: $isShowingPlay) {
+                    PlayView(isShowingPlay: $isShowingPlay)
+                        .task {
+                            
+                            /*
+                             Add when backend exists:
+                             
+                             socketManager.configure(
+                             serverURL:
+                             URL(
+                             string:
+                             "https://API-SERVER.com"
+                             )!
+                             )
+                             
+                             socketManager.connect()
+                             */
+                        }
+                }
             
             
         } //gr

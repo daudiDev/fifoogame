@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		08957E1B52A53A058F342440 /* Pods_fifoogame.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F31625C80422BAB0B57F2C67 /* Pods_fifoogame.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		278C62F93034EFC900E5F340 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -17,8 +21,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0C2F5F641D60BED7204C9F85 /* Pods-fifoogame.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-fifoogame.release.xcconfig"; path = "Target Support Files/Pods-fifoogame/Pods-fifoogame.release.xcconfig"; sourceTree = "<group>"; };
 		278C62C73034DC7200E5F340 /* fifoogame.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = fifoogame.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		278C62F53034EFC900E5F340 /* fifoogameTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = fifoogameTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		295325B027358286B4336806 /* Pods-fifoogame.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-fifoogame.debug.xcconfig"; path = "Target Support Files/Pods-fifoogame/Pods-fifoogame.debug.xcconfig"; sourceTree = "<group>"; };
+		F31625C80422BAB0B57F2C67 /* Pods_fifoogame.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_fifoogame.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -29,6 +36,41 @@
 			);
 			target = 278C62C63034DC7200E5F340 /* fifoogame */;
 		};
+		274E99A4303803520075F87C /* Exceptions for "fifoogame" folder in "fifoogameTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"App/App OverLay/Calendar/ActivityDetailsView.swift",
+				"App/App OverLay/Calendar/CalendarUserRequestImagesRow.swift",
+				"App/App OverLay/Calendar/CalendarView.swift",
+				"App/App OverLay/Calendar/EventItemUserImagesRow.swift",
+				"App/App OverLay/Calendar/InfiniteDayCalendarView.swift",
+				App/SocketManager.swift,
+				"FIfoo Play/Play Views/Media Views/ExerciseInstructionsView.swift",
+				"FIfoo Play/Play Views/Media Views/FullScreenImageView.swift",
+				"FIfoo Play/Play Views/Media Views/FullScreenVideoView.swift",
+				"FIfoo Play/Play Views/PlayOverlay.swift",
+				"FIfoo Play/Play Views/PlayView.swift",
+				"FIfoo Play/Play Views/Sound Files/levelup.wav",
+				"FIfoo Play/Play Views/Sound Files/swish.wav",
+				"FIfoo Play/Play Views/Workout LifeCycle/PedometerManager.swift",
+				"FIfoo Play/Play Views/Workout LifeCycle/WorkoutModel.swift",
+				"FIfoo Play/Play Views/Workout LifeCycle/WorkoutSessionManager.swift",
+				"FIfoo Play/Play Views/Workout LifeCycle/WorkoutSoundManager.swift",
+				"FIfoo Play/Play Views/Workout LifeCycle/WorkoutVoiceManager.swift",
+				"FIfoo Play/Play Views/Workout Live/FloatingHeartsView.swift",
+				"FIfoo Play/Play Views/Workout Live/WorkoutLiveMessage.swift",
+				"FIfoo Play/Play Views/Workout Live/WorkoutLiveMessageStream.swift",
+				"FIfoo Play/Play Views/Workout Live/WorkoutLiveOverlay.swift",
+				"FIfoo Play/Play Views/Workout Live/WorkoutMoodEmojiPicker.swift",
+				"FIfoo Play/Play Views/Workout Progress Views/WorkoutCircularProgressBar.swift",
+				"FIfoo Play/Play Views/Workout Progress Views/WorkoutCompletedView.swift",
+				"FIfoo Play/Play Views/Workout Progress Views/WorkoutProgressReportView.swift",
+				"FIfoo Play/Play Views/Workout Progress Views/WorkoutProgressStatus.swift",
+				"FIfoo Play/Play Views/Workout Progress Views/WorkoutStatusOverlay.swift",
+				"FIfoo Play/Play Views/WorkoutExercise Model/WorkoutExerciseModel.swift",
+			);
+			target = 278C62F43034EFC900E5F340 /* fifoogameTests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -36,6 +78,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				274E98183037F0360075F87C /* Exceptions for "fifoogame" folder in "fifoogame" target */,
+				274E99A4303803520075F87C /* Exceptions for "fifoogame" folder in "fifoogameTests" target */,
 			);
 			path = fifoogame;
 			sourceTree = "<group>";
@@ -52,6 +95,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				08957E1B52A53A058F342440 /* Pods_fifoogame.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +115,8 @@
 				278C62C93034DC7200E5F340 /* fifoogame */,
 				278C62F63034EFC900E5F340 /* fifoogameTests */,
 				278C62C83034DC7200E5F340 /* Products */,
+				C1365AEAF8A08C64EEA1833B /* Pods */,
+				868177123902FFFF4D406E13 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -83,6 +129,23 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		868177123902FFFF4D406E13 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				F31625C80422BAB0B57F2C67 /* Pods_fifoogame.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		C1365AEAF8A08C64EEA1833B /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				295325B027358286B4336806 /* Pods-fifoogame.debug.xcconfig */,
+				0C2F5F641D60BED7204C9F85 /* Pods-fifoogame.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -90,9 +153,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 278C62D23034DC7400E5F340 /* Build configuration list for PBXNativeTarget "fifoogame" */;
 			buildPhases = (
+				4C02B2EB0BC5D660F69704C4 /* [CP] Check Pods Manifest.lock */,
 				278C62C33034DC7200E5F340 /* Sources */,
 				278C62C43034DC7200E5F340 /* Frameworks */,
 				278C62C53034DC7200E5F340 /* Resources */,
+				8ACD96E6C9AAFD33D2011484 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -102,8 +167,6 @@
 				278C62C93034DC7200E5F340 /* fifoogame */,
 			);
 			name = fifoogame;
-			packageProductDependencies = (
-			);
 			productName = fifoogame;
 			productReference = 278C62C73034DC7200E5F340 /* fifoogame.app */;
 			productType = "com.apple.product-type.application";
@@ -125,8 +188,6 @@
 				278C62F63034EFC900E5F340 /* fifoogameTests */,
 			);
 			name = fifoogameTests;
-			packageProductDependencies = (
-			);
 			productName = fifoogameTests;
 			productReference = 278C62F53034EFC900E5F340 /* fifoogameTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -186,6 +247,52 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4C02B2EB0BC5D660F69704C4 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-fifoogame-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		8ACD96E6C9AAFD33D2011484 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-fifoogame/Pods-fifoogame-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-fifoogame/Pods-fifoogame-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-fifoogame/Pods-fifoogame-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		278C62C33034DC7200E5F340 /* Sources */ = {
@@ -336,6 +443,7 @@
 		};
 		278C62D33034DC7400E5F340 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 295325B027358286B4336806 /* Pods-fifoogame.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -343,6 +451,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JH9RVESMJJ;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = fifoogame/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -369,6 +478,7 @@
 		};
 		278C62D43034DC7400E5F340 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0C2F5F641D60BED7204C9F85 /* Pods-fifoogame.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -376,6 +486,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JH9RVESMJJ;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = fifoogame/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

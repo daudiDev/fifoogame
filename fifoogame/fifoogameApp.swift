@@ -9,6 +9,7 @@ import SwiftUI
 
 @main
 struct fifoogameApp: App {
+    private let socketManager = SocketManager.shared
     var body: some Scene {
         WindowGroup {
             DayMapView()

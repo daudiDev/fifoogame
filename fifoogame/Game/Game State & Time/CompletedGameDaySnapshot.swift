@@ -8,6 +8,7 @@
 
 import Foundation
 
+
 struct CompletedGameDaySnapshot:
     Equatable,
     Sendable {
@@ -20,4 +21,7 @@ struct CompletedGameDaySnapshot:
 
     let completedRoute:
         CompletedRoute
+
+    let progressState:
+        DayProgressState
 }

@@ -135,6 +135,27 @@ final class GameStore:
     @Published
     private(set) var lastCompletedDaySnapshot:
         CompletedGameDaySnapshot?
+    
+    // =====================================================
+    // MARK: - Progress / Scoring
+    // =====================================================
+
+    @Published
+    private(set) var progressState =
+        DayProgressState(
+            startingProgress:
+                MapProgress(0)
+        )
+
+
+    @Published
+    private(set) var nodeProgressScoringRules:
+        [GameNodeID: ProgressScoringRule] = [:]
+
+
+    @Published
+    private(set) var dailyStartingProgress =
+        MapProgress(0)
 
 
     private var clockTask:
@@ -158,6 +179,32 @@ final class GameStore:
         )
         ??
         .current
+    }
+    
+    var currentProgress:
+        MapProgress {
+
+        progressState
+            .currentProgress
+    }
+
+
+    var currentProgressPercent:
+        Double {
+
+        currentProgress.percent
+    }
+
+
+    var currentProgressCoordinate:
+        MapCoordinate {
+
+        MapCoordinate(
+            time:
+                currentDayTime,
+            progress:
+                currentProgress
+        )
     }
     
     
@@ -3415,7 +3462,7 @@ final class GameStore:
     ) {
 
         // =================================================
-        // Finish the previous day.
+        // Finish yesterday's route.
         // =================================================
 
         let finalProgression =
@@ -3435,13 +3482,15 @@ final class GameStore:
                         currentCalendarDay,
                     completedRoute:
                         finalProgression
-                            .completedRoute
+                            .completedRoute,
+                    progressState:
+                        progressState
                 )
         }
 
 
         // =================================================
-        // Start new day.
+        // New game day
         // =================================================
 
         currentGameDayID =
@@ -3460,7 +3509,10 @@ final class GameStore:
             time
 
 
-        // New day means new route state.
+        // =================================================
+        // Reset route state.
+        // =================================================
+
         routeState =
             DayRouteState()
 
@@ -3471,9 +3523,21 @@ final class GameStore:
         selection.clear()
 
 
-        // Establish that the new day has already progressed
-        // through the current clock time, even though no
-        // route exists yet.
+        // =================================================
+        // Reset daily scoring.
+        // =================================================
+
+        progressState =
+            DayProgressState(
+                startingProgress:
+                    dailyStartingProgress
+            )
+
+
+        // =================================================
+        // Begin new day's time progression.
+        // =================================================
+
         _ =
             advanceCompletedRoute(
                 to:
@@ -3758,6 +3822,10 @@ final class GameStore:
             GameDayID()
 
 
+        // =================================================
+        // Reset route state.
+        // =================================================
+
         routeState =
             DayRouteState()
 
@@ -3767,6 +3835,21 @@ final class GameStore:
 
         selection.clear()
 
+
+        // =================================================
+        // Reset progress state.
+        // =================================================
+
+        progressState =
+            DayProgressState(
+                startingProgress:
+                    dailyStartingProgress
+            )
+
+
+        // =================================================
+        // Reset time.
+        // =================================================
 
         currentClockDate =
             date
@@ -3817,6 +3900,475 @@ final class GameStore:
         }
     }
     
+    // =====================================================
+    // MARK: - Node Scoring Rules
+    // =====================================================
+
+    @discardableResult
+    func setProgressScoringRule(
+        _ rule:
+            ProgressScoringRule,
+        for nodeID:
+            GameNodeID
+    ) -> Bool {
+
+        guard
+            gameNode(
+                id:
+                    nodeID
+            )
+            != nil
+        else {
+
+            return false
+        }
+
+
+        nodeProgressScoringRules[
+            nodeID
+        ] =
+            rule
+
+
+        return true
+    }
+
+
+    func removeProgressScoringRule(
+        for nodeID:
+            GameNodeID
+    ) {
+
+        nodeProgressScoringRules[
+            nodeID
+        ] =
+            nil
+    }
+
+
+    func progressScoringRule(
+        for nodeID:
+            GameNodeID
+    ) -> ProgressScoringRule? {
+
+        nodeProgressScoringRules[
+            nodeID
+        ]
+    }
+    
+    // =====================================================
+    // MARK: - Apply Progress Change
+    // =====================================================
+
+    @discardableResult
+    func applyProgressChange(
+        delta:
+            Double,
+        reason:
+            ProgressChangeReason,
+        nodeID:
+            GameNodeID? = nil,
+        note:
+            String? = nil,
+        at time:
+            DayTime? = nil
+    ) -> ProgressLedgerEntry? {
+
+        let occurredAt =
+            time
+            ??
+            currentDayTime
+
+
+        // =================================================
+        // Progress history must remain chronological.
+        // =================================================
+
+        if let lastEntry =
+            progressState
+                .entries
+                .last
+        {
+
+            guard
+                occurredAt >=
+                    lastEntry.occurredAt
+            else {
+
+                return nil
+            }
+        }
+
+
+        let before =
+            progressState
+                .currentProgress
+
+
+        let after =
+            MapProgress(
+                before.percent
+                +
+                delta
+            )
+
+
+        let entry =
+            ProgressLedgerEntry(
+                occurredAt:
+                    occurredAt,
+                delta:
+                    delta,
+                progressBefore:
+                    before,
+                progressAfter:
+                    after,
+                reason:
+                    reason,
+                nodeID:
+                    nodeID,
+                note:
+                    note
+            )
+
+
+        var updated =
+            progressState
+
+
+        updated.currentProgress =
+            after
+
+
+        updated.entries.append(
+            entry
+        )
+
+
+        progressState =
+            updated
+
+
+        return entry
+    }
+    
+    
+    // =====================================================
+    // MARK: - Apply Node Outcome
+    // =====================================================
+
+    @discardableResult
+    func setProgressOutcome(
+        _ outcome:
+            NodeProgressOutcome,
+        for nodeID:
+            GameNodeID
+    ) -> ProgressOutcomeApplyResult {
+
+        // =================================================
+        // Node must exist.
+        // =================================================
+
+        guard let node =
+            gameNode(
+                id:
+                    nodeID
+            )
+        else {
+
+            return .failed(
+                .nodeNotFound
+            )
+        }
+
+
+        guard node.isEnabled else {
+
+            return .failed(
+                .nodeDisabled
+            )
+        }
+
+
+        // =================================================
+        // Node must explicitly have a scoring rule.
+        //
+        // Not every GameNode affects progress.
+        // =================================================
+
+        guard let rule =
+            nodeProgressScoringRules[
+                nodeID
+            ]
+        else {
+
+            return .failed(
+                .scoringRuleUnavailable
+            )
+        }
+
+
+        let newDelta =
+            rule.delta(
+                for:
+                    outcome
+            )
+
+
+        // =================================================
+        // Node has already received an outcome.
+        // =================================================
+
+        if let existing =
+            progressState
+                .nodeOutcomes[
+                    nodeID
+                ]
+        {
+
+            // Same outcome twice does nothing.
+
+            if existing.outcome ==
+                outcome
+            {
+
+                return .unchanged
+            }
+
+
+            // =============================================
+            // Correct previous outcome without deleting
+            // history.
+            //
+            // Example:
+            //
+            // skipped = -5
+            // then corrected to completed = +10
+            //
+            // correction = +15
+            //
+            // Ledger remains append-only.
+            // =============================================
+
+            let correctionDelta =
+                newDelta
+                -
+                existing.appliedDelta
+
+
+            guard let entry =
+                applyProgressChange(
+                    delta:
+                        correctionDelta,
+                    reason:
+                        .nodeOutcomeCorrection,
+                    nodeID:
+                        nodeID,
+                    note:
+                        "\(existing.outcome.rawValue) → \(outcome.rawValue)"
+                )
+            else {
+
+                return .failed(
+                    .invalidTimestamp
+                )
+            }
+
+
+            var updated =
+                progressState
+
+
+            updated.nodeOutcomes[
+                nodeID
+            ] =
+                AppliedNodeProgressOutcome(
+                    outcome:
+                        outcome,
+                    appliedDelta:
+                        newDelta,
+                    occurredAt:
+                        currentDayTime
+                )
+
+
+            progressState =
+                updated
+
+
+            return .corrected(
+                entry
+            )
+        }
+
+
+        // =================================================
+        // First outcome for this node.
+        // =================================================
+
+        let reason:
+            ProgressChangeReason
+
+
+        switch outcome {
+
+        case .completed:
+
+            reason =
+                .nodeCompleted
+
+
+        case .skipped:
+
+            reason =
+                .nodeSkipped
+
+
+        case .missed:
+
+            reason =
+                .nodeMissed
+        }
+
+
+        guard let entry =
+            applyProgressChange(
+                delta:
+                    newDelta,
+                reason:
+                    reason,
+                nodeID:
+                    nodeID
+            )
+        else {
+
+            return .failed(
+                .invalidTimestamp
+            )
+        }
+
+
+        var updated =
+            progressState
+
+
+        updated.nodeOutcomes[
+            nodeID
+        ] =
+            AppliedNodeProgressOutcome(
+                outcome:
+                    outcome,
+                appliedDelta:
+                    newDelta,
+                occurredAt:
+                    currentDayTime
+            )
+
+
+        progressState =
+            updated
+
+
+        return .applied(
+            entry
+        )
+    }
+    
+    // =====================================================
+    // MARK: - Bonus
+    // =====================================================
+
+    @discardableResult
+    func awardProgressBonus(
+        _ amount:
+            Double,
+        note:
+            String? = nil
+    ) -> ProgressLedgerEntry? {
+
+        applyProgressChange(
+            delta:
+                abs(amount),
+            reason:
+                .bonus,
+            note:
+                note
+        )
+    }
+
+
+    // =====================================================
+    // MARK: - Penalty
+    // =====================================================
+
+    @discardableResult
+    func applyProgressPenalty(
+        _ amount:
+            Double,
+        note:
+            String? = nil
+    ) -> ProgressLedgerEntry? {
+
+        applyProgressChange(
+            delta:
+                -abs(amount),
+            reason:
+                .penalty,
+            note:
+                note
+        )
+    }
+
+
+    // =====================================================
+    // MARK: - Manual Adjustment
+    // =====================================================
+
+    @discardableResult
+    func adjustProgress(
+        by amount:
+            Double,
+        note:
+            String? = nil
+    ) -> ProgressLedgerEntry? {
+
+        applyProgressChange(
+            delta:
+                amount,
+            reason:
+                .manualAdjustment,
+            note:
+                note
+        )
+    }
+    
+    func setDailyStartingProgress(
+        _ progress:
+            MapProgress
+    ) {
+
+        dailyStartingProgress =
+            progress
+
+
+        // Only modify today's live value if nothing
+        // has happened yet.
+
+        guard
+            !progressState
+                .hasChanges
+        else {
+
+            return
+        }
+
+
+        progressState =
+            DayProgressState(
+                startingProgress:
+                    progress
+            )
+    }
     
     
     

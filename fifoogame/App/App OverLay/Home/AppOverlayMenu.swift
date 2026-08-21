@@ -15,18 +15,29 @@ struct AppOverlayMenu: View {
         VStack(alignment: .center, spacing: 15) {
             
             HStack(alignment: .center, spacing: 5) {
-                Image("placeholder")
-                    .resizable()
-                    .frame(width: 40, height: 40)
                 Text("Main Menu")
-                    .font(.system(size: 22))
-                    .fontWeight(.semibold)
+                    .font(.system(size: 24))
+                    .fontWeight(.bold)
                     .foregroundStyle(.black)
             }
             .padding(.top, 100)
             .padding(.bottom, 30)
             
             Divider()
+            
+            //MARK: profile link
+            NavigationLink{ ProfileView()} label: {
+                HStack(alignment: .center, spacing: 5) {
+                    Image("placeholder")
+                        .resizable()
+                        .frame(width: 40, height: 40)
+                    Text("My Profile")
+                        .font(.system(size: 18))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.black)
+                }
+                .padding(.vertical, 30)
+            }
             
             //MARK: add params
             NavigationLink{ PostsView()} label: {

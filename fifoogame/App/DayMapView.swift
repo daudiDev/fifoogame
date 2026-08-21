@@ -113,33 +113,33 @@ struct DayMapView: View {
                     Spacer()
                     
                     
-                    if
-                        let nodeID =
-                            store.selection
-                            .selectedNodeID,
-                        
-                            let gameNode =
-                            store.gameNode(
-                                id:
-                                    nodeID
-                            )
-                    {
-                        
-                        GameNodeInspectorHUD(
-                            node:
-                                gameNode
-                        )
-                        
-                        
-                    } else if hasRoadSelection {
-                        
-                        RoadInspectorHUD(
-                            graph:
-                                store.roadGraph,
-                            selection:
-                                store.selection
-                        )
-                    }
+//                    if
+//                        let nodeID =
+//                            store.selection
+//                            .selectedNodeID,
+//                        
+//                            let gameNode =
+//                            store.gameNode(
+//                                id:
+//                                    nodeID
+//                            )
+//                    {
+//                        
+//                        GameNodeInspectorHUD(
+//                            node:
+//                                gameNode
+//                        )
+//                        
+//                        
+//                    } else if hasRoadSelection {
+//                        
+//                        RoadInspectorHUD(
+//                            graph:
+//                                store.roadGraph,
+//                            selection:
+//                                store.selection
+//                        )
+//                    }
                     
                     
                     /*

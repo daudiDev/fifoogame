@@ -22,7 +22,7 @@ struct AppOverLayTopRow: View {
             Spacer()
             
             //MARK: add action data??
-           
+            NavigationLink{InfiniteDayCalendarView()} label: {
                 HStack(alignment: .center, spacing: 3) {
                     Text(weekdayString(from: appManager.selectedDate))
                         .font(.system(size: 18, weight: .bold, design: .rounded))
@@ -41,6 +41,7 @@ struct AppOverLayTopRow: View {
                         .foregroundStyle(.black)
                     
                 } //hs
+            }
         
               
             Spacer()
