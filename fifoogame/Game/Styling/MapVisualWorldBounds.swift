@@ -1,22 +1,32 @@
 //
+//  MapVisualWorldBounds 2.swift
+//  fifoogame
+//
+//  Created by Daudi Sagala on 8/22/26.
+//
+
+
+//
 //  MapVisualWorldBounds.swift
 //  fifoogame
 //
 //  Created by Daudi Sagala on 8/20/26.
 //
 
-
 import CoreGraphics
 
 
+/// Bounds used by decorative/world rendering.
+///
+/// These are deliberately separate from Fifoo's semantic coordinate
+/// domain. Progress can still exist outside this decorative range.
 enum MapVisualWorldBounds {
 
     // =====================================================
     // MARK: - Decorative Progress Range
     // =====================================================
 
-    /// This controls only how far decorative scenery
-    /// is generated.
+    /// Controls how far decorative scenery is generated.
     ///
     /// It does NOT change Fifoo's coordinate system.
     static let minimumProgress:
@@ -34,20 +44,22 @@ enum MapVisualWorldBounds {
     static var minimumX:
         CGFloat {
 
-        worldX(
-            forProgress:
-                minimumProgress
-        )
+        MapCoordinateConverter
+            .worldX(
+                forProgress:
+                    minimumProgress
+            )
     }
 
 
     static var maximumX:
         CGFloat {
 
-        worldX(
-            forProgress:
-                maximumProgress
-        )
+        MapCoordinateConverter
+            .worldX(
+                forProgress:
+                    maximumProgress
+            )
     }
 
 
@@ -55,8 +67,7 @@ enum MapVisualWorldBounds {
         CGFloat {
 
         maximumX
-        -
-        minimumX
+        - minimumX
     }
 
 
@@ -64,71 +75,50 @@ enum MapVisualWorldBounds {
     // MARK: - Vertical Bounds
     // =====================================================
 
-    static let topY:
-        CGFloat = 0
+    static var topY:
+        CGFloat {
+
+        MapCoordinateConverter
+            .worldY(
+                for:
+                    .startOfDay
+            )
+    }
 
 
     static var bottomY:
         CGFloat {
 
-        -MapWorldConfiguration.height
+        MapCoordinateConverter
+            .worldY(
+                for:
+                    .endOfDay
+            )
     }
 
 
     static var height:
         CGFloat {
 
-        MapWorldConfiguration.height
+        abs(
+            topY
+            - bottomY
+        )
     }
 
 
     // =====================================================
-    // MARK: - Conversion
+    // MARK: - Convenience Rect
     // =====================================================
 
-    private static func worldX(
-        forProgress progress:
-            Double
-    ) -> CGFloat {
+    static var rect:
+        CGRect {
 
-        let referenceMinimum =
-            MapWorldConfiguration
-                .minimumReferenceProgress
-
-
-        let referenceMaximum =
-            MapWorldConfiguration
-                .maximumReferenceProgress
-
-
-        let referenceRange =
-            referenceMaximum
-            -
-            referenceMinimum
-
-
-        guard referenceRange != 0 else {
-
-            return 0
-        }
-
-
-        let fraction =
-            (
-                progress
-                -
-                referenceMinimum
-            )
-            /
-            referenceRange
-
-
-        return CGFloat(
-            Double(
-                MapWorldConfiguration.width
-            )
-            *
-            fraction
+        CGRect(
+            x: minimumX,
+            y: bottomY,
+            width: width,
+            height: height
         )
     }
 }

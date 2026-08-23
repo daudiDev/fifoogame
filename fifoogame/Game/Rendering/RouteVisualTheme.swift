@@ -2,14 +2,40 @@
 //  RouteVisualTheme.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/22/26.
 //
+
 
 
 import SpriteKit
 
 
 enum RouteVisualTheme {
+
+
+    // =====================================================
+    // MARK: - Curved Route Geometry
+    // =====================================================
+
+    /// Visual trim radius used at a 90-degree grid turn.
+    ///
+    /// The logical route still reaches the actual road intersection; only
+    /// its rendered centerline is rounded. Keeping this tied to both the
+    /// street width and grid pitch makes the curve feel like a vehicle turn
+    /// without cutting visibly across the rounded land islands.
+    static var cornerRadius: CGFloat {
+
+        min(
+            GridMapConfiguration.cellPitchWorld * 0.16,
+            GridMapConfiguration.roadWidthWorld * 0.60
+        )
+    }
+
+
+    /// Never trim more than this fraction of either road segment at a turn.
+    /// This leaves a visible straight portion even when two turns occur on
+    /// consecutive grid intersections.
+    static let maximumCornerTrimFraction: CGFloat = 0.42
 
     // =====================================================
     // MARK: - Completed

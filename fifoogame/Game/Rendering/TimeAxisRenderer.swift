@@ -2,112 +2,171 @@
 //  TimeAxisRenderer.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/20/26.
+//  Created by Daudi Sagala on 8/22/26.
 //
 
 
 import SpriteKit
 
 
+@MainActor
 final class TimeAxisRenderer {
 
-    // MARK: - Nodes
+    // =====================================================
+    // MARK: - Tick Model
+    // =====================================================
 
-    private let container = SKNode()
+    private struct TickSpecification {
 
-    private struct HourLabel {
-        let hour: Int
+        let key: String
+        let text: String
+        let time: DayTime
+        let verticalAlignment: SKLabelVerticalAlignmentMode
+    }
+
+
+    private struct RenderedTick {
+
         let worldY: CGFloat
         let node: SKLabelNode
     }
 
-    private var labels: [HourLabel] = []
+
+    private struct LayoutSignature: Equatable {
+
+        let cameraPosition: CGPoint
+        let cameraXScale: CGFloat
+        let cameraYScale: CGFloat
+        let cameraRotation: CGFloat
+        let viewBounds: CGRect
+    }
 
 
+    // =====================================================
+    // MARK: - Nodes / State
+    // =====================================================
+
+    private let container = SKNode()
+
+    private var ticks: [RenderedTick] = []
+
+    private var lastLayoutSignature: LayoutSignature?
+
+
+    // =====================================================
     // MARK: - Style
+    // =====================================================
 
     private let horizontalInset: CGFloat = 24
-    private let fontSize: CGFloat = 32
+    private let fontSize: CGFloat = 40
 
 
+    // =====================================================
     // MARK: - Attach
+    // =====================================================
 
     func attach(
         to camera: SKCameraNode
     ) {
 
-        guard container.parent == nil else {
-            return
+        if container.parent !== camera {
+
+            container.removeFromParent()
+
+            container.name =
+                "time-axis-container"
+
+            container.zPosition =
+                MapLayerZ.persistentUI
+
+            container.isUserInteractionEnabled =
+                false
+
+            camera.addChild(
+                container
+            )
         }
 
-        container.name = "time-axis-container"
 
-        // Very high so labels render over roads/routes/nodes.
-//        container.zPosition = 100_000 //MARK: may change
-        
-        container.zPosition =
-            MapLayerZ.persistentUI
+        if ticks.isEmpty {
+            buildLabels()
+        }
 
-        camera.addChild(container)
 
-        buildLabels()
+        invalidateLayout()
     }
 
 
+    // =====================================================
+    // MARK: - Layout Invalidating
+    // =====================================================
+
+    func invalidateLayout() {
+
+        lastLayoutSignature = nil
+    }
+
+
+    // =====================================================
     // MARK: - Build
+    // =====================================================
 
     private func buildLabels() {
 
         container.removeAllChildren()
-        labels.removeAll()
+        ticks.removeAll(
+            keepingCapacity: true
+        )
 
-        for hour in 0 ... 23 {
 
-            let dayTime = DayTime(
-                secondsFromMidnight:
-                    TimeInterval(hour * 3_600)
-            )
+        for specification in tickSpecifications {
 
-            let mapCoordinate = MapCoordinate(
-                time: dayTime,
-                progress: MapProgress(0)
-            )
-
-            let worldPoint =
+            let worldY =
                 MapCoordinateConverter
-                    .worldPoint(
-                        for: mapCoordinate
+                    .worldY(
+                        for: specification.time
                     )
-                    .cgPoint
 
 
             let label = SKLabelNode()
 
-            label.text = hourText(hour)
+            label.text =
+                specification.text
 
-            label.fontName = "AvenirNext-Medium"
-            label.fontSize = fontSize
-            label.fontColor = .white.withAlphaComponent(0.8)
+            label.fontName =
+                "AvenirNext-Medium"
 
-            label.horizontalAlignmentMode = .left
-            label.verticalAlignmentMode = .center
+            label.fontSize =
+                fontSize
 
-            label.name = "time-axis-hour-\(hour)"
+            label.fontColor =
+                .white
+                .withAlphaComponent(0.82)
 
-            /*
-             x/y are assigned later.
+            label.horizontalAlignmentMode =
+                .left
 
-             Because this label is a CHILD OF THE CAMERA,
-             its position is effectively screen-relative.
-            */
-            label.position = .zero
+            label.verticalAlignmentMode =
+                specification.verticalAlignment
 
-            container.addChild(label)
+            label.name =
+                "time-axis-\(specification.key)"
 
-            labels.append(
-                HourLabel(
-                    hour: hour,
-                    worldY: worldPoint.y,
+            label.position =
+                .zero
+
+            label.isUserInteractionEnabled =
+                false
+
+
+            container.addChild(
+                label
+            )
+
+
+            ticks.append(
+                RenderedTick(
+                    worldY: worldY,
                     node: label
                 )
             )
@@ -115,7 +174,68 @@ final class TimeAxisRenderer {
     }
 
 
+    /// Only the five semantic labels requested for the Fifoo day axis are
+    /// created. The earlier renderer created 24 label nodes even though 19
+    /// of them contained empty strings.
+    ///
+    /// The final label is anchored to the exact end-of-day boundary but is
+    /// named "11:59 PM" to retain the existing product wording.
+    private var tickSpecifications: [TickSpecification] {
+
+        [
+            TickSpecification(
+                key: "12am",
+                text: "12 AM",
+                time: .startOfDay,
+                verticalAlignment: .top
+            ),
+
+            TickSpecification(
+                key: "6am",
+                text: "6 AM",
+                time:
+                    DayTime(
+                        secondsFromMidnight:
+                            6 * DayTime.secondsPerHour
+                    ),
+                verticalAlignment: .center
+            ),
+
+            TickSpecification(
+                key: "12pm",
+                text: "12 PM",
+                time:
+                    DayTime(
+                        secondsFromMidnight:
+                            12 * DayTime.secondsPerHour
+                    ),
+                verticalAlignment: .center
+            ),
+
+            TickSpecification(
+                key: "6pm",
+                text: "6 PM",
+                time:
+                    DayTime(
+                        secondsFromMidnight:
+                            18 * DayTime.secondsPerHour
+                    ),
+                verticalAlignment: .center
+            ),
+
+            TickSpecification(
+                key: "1159pm",
+                text: "11:59 PM",
+                time: .endOfDay,
+                verticalAlignment: .bottom
+            )
+        ]
+    }
+
+
+    // =====================================================
     // MARK: - Update
+    // =====================================================
 
     func update(
         scene: SKScene,
@@ -123,70 +243,81 @@ final class TimeAxisRenderer {
         view: SKView
     ) {
 
-        // =====================================================
-        // Fixed screen X
-        // =====================================================
-        //
-        // Instead of manually calculating camera scale, convert
-        // an actual UIKit view coordinate into camera-local
-        // coordinates.
-        //
-        // This handles:
-        //
-        // - camera zoom
-        // - scene scaleMode
-        // - scene anchor point
-        // - different screen sizes
-        //
-        // automatically.
-        // =====================================================
-
-        let desiredViewPoint =
-            CGPoint(
-                x: horizontalInset,
-                y: view.bounds.midY
+        let signature =
+            LayoutSignature(
+                cameraPosition:
+                    camera.position,
+                cameraXScale:
+                    camera.xScale,
+                cameraYScale:
+                    camera.yScale,
+                cameraRotation:
+                    camera.zRotation,
+                viewBounds:
+                    view.bounds
             )
 
 
-        let scenePointAtLeftEdge =
+        // Most SpriteKit frames occur while the camera is stationary. Avoid
+        // repeating coordinate conversions when nothing that can affect the
+        // overlay layout has changed.
+        guard signature != lastLayoutSignature else {
+            return
+        }
+
+
+        lastLayoutSignature =
+            signature
+
+
+        // -------------------------------------------------
+        // Fixed screen X
+        // -------------------------------------------------
+
+        let desiredViewPoint =
+            CGPoint(
+                x:
+                    view.bounds.minX
+                    + horizontalInset,
+                y:
+                    view.bounds.midY
+            )
+
+
+        let scenePointAtLeftInset =
             scene.convertPoint(
                 fromView: desiredViewPoint
             )
 
 
-        let cameraPointAtLeftEdge =
+        let cameraPointAtLeftInset =
             camera.convert(
-                scenePointAtLeftEdge,
+                scenePointAtLeftInset,
                 from: scene
             )
 
 
         let fixedX =
-            cameraPointAtLeftEdge.x
+            cameraPointAtLeftInset.x
 
 
-        // =====================================================
-        // Update every hour.
-        // =====================================================
+        // -------------------------------------------------
+        // World-derived Y
+        // -------------------------------------------------
 
-        for item in labels {
+        let semanticAxisX =
+            MapCoordinateConverter
+                .worldX(
+                    forProgress: 0
+                )
 
-            /*
-             Convert the hour's WORLD Y into CAMERA-LOCAL Y.
 
-             This is the key.
-
-             The label itself lives in the camera, so X doesn't
-             follow the world.
-
-             But its Y is calculated from its real world
-             coordinate, so vertical scrolling still affects it.
-            */
+        for tick in ticks {
 
             let worldPoint =
                 CGPoint(
-                    x: 0,
-                    y: item.worldY
+                    x: semanticAxisX,
+                    y: tick.worldY
                 )
 
 
@@ -197,41 +328,11 @@ final class TimeAxisRenderer {
                 )
 
 
-            item.node.position =
+            tick.node.position =
                 CGPoint(
                     x: fixedX,
                     y: cameraLocalPoint.y
                 )
         }
-    }
-
-
-    // MARK: - Text
-
-    private func hourText(
-        _ hour: Int
-    ) -> String {
-        
-        switch hour {
-
-        case 0:
-            return "12 AM"
-
-        case 6:
-            return "6 AM"
-
-        case 12:
-            return "12 PM"
-
-        case 18:
-            return "6 PM"
-
-        case 24:
-            return "11:59 PM"
-
-        default:
-            return ""
-        }
-        
     }
 }

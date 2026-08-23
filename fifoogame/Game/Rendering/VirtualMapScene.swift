@@ -1,9 +1,10 @@
 //
-//  VirtualMapScene.swift
+//  VirtualMapScene 2.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/18/26.
+//  Created by Daudi Sagala on 8/22/26.
 //
+
 
 import SpriteKit
 
@@ -11,12 +12,9 @@ import SpriteKit
 @MainActor
 final class VirtualMapScene: SKScene {
     
-    private let worldArtRenderer =
-        MapWorldArtRenderer()
-    
     private let timeAxisRenderer =
         TimeAxisRenderer()
-
+    
     // =====================================================
     // MARK: - Interaction
     // =====================================================
@@ -64,9 +62,6 @@ final class VirtualMapScene: SKScene {
 
     private let debugLayer =
         SKNode()
-    
-    private let gameNodeLayer =
-        SKNode()
 
 
     // =====================================================
@@ -75,10 +70,6 @@ final class VirtualMapScene: SKScene {
 
     private let gridRenderer =
         MapGridRenderer()
-
-
-    private let roadRenderer =
-        RoadLayerRenderer()
 
 
     private let roadSelectionRenderer =
@@ -205,7 +196,7 @@ final class VirtualMapScene: SKScene {
 
 
         self.roadGraph =
-            DenseCityRoadGraph.make()
+            GridRoadGraph.make()
 
 
         self.gameNodes =
@@ -307,6 +298,25 @@ private extension VirtualMapScene {
 
     func commonInit() {
 
+        #if DEBUG
+        MapCoordinateConverter
+            .debugAssertCartesianScale()
+
+        GridMapGeometry
+            .debugAssertGeometry()
+
+        GridRoadTopology
+            .debugAssertTopology()
+
+        if roadGraph.id == GridRoadGraph.graphID {
+            GridRoadGraph
+                .debugAssertGraph(
+                    roadGraph
+                )
+        }
+        #endif
+
+
         // MARK: Coordinate System
 
         /*
@@ -316,7 +326,10 @@ private extension VirtualMapScene {
              (0, 0)
 
          bottom:
-             y = -2400
+             y = -MapWorldConfiguration.height
+
+         With the Cartesian redesign this is currently:
+             y = -2000
          */
 
         anchorPoint =
@@ -330,9 +343,11 @@ private extension VirtualMapScene {
             .aspectFit
 
 
+        // Step 3: the scene itself is the continuous road surface.
+        // Rounded land islands are rendered above it by MapGridRenderer.
         backgroundColor =
             MapVisualTheme
-                .landColor
+                .roadSurfaceColor
 
 
         /*
@@ -345,7 +360,10 @@ private extension VirtualMapScene {
 
         configureCoordinateGrid()
 
-        configureRoadNetwork()
+        // Step 4: GridRoadGraph is now the active road topology.
+        // The visible road surface remains the Step 3 grid renderer; the
+        // graph supplies deterministic intersections/edges for nodes, taps,
+        // routes, and future pathfinding.
 
         configureGameNodes()
 
@@ -372,17 +390,9 @@ extension VirtualMapScene {
                 view
         )
         
-        worldArtRenderer.attach(
-            to:
-                self
-        )
-
-
-        worldArtRenderer.render(
-            graph:
-                roadGraph
-        )
-
+        // Step 4: legacy procedural road topology/artwork is no longer
+        // active. MapGridRenderer is the visible world and GridRoadGraph is
+        // the semantic road network underneath it.
 
         cameraController.install(
             in:
@@ -392,6 +402,17 @@ extension VirtualMapScene {
             initialFocusTime:
                 currentTime
         )
+
+
+        // =====================================================
+        // Step 3 — Initialize Visible Cartesian Grid Rendering
+        // =====================================================
+
+        gridRenderer
+            .updateVisibleRegion(
+                scene: self,
+                view: view
+            )
         
         guard
             let camera = camera
@@ -403,6 +424,17 @@ extension VirtualMapScene {
         timeAxisRenderer.attach(
             to: camera
         )
+
+        // Step 8 positions the persistent labels immediately so there is no
+        // one-frame flash at the camera origin before didFinishUpdate().
+        timeAxisRenderer.update(
+            scene: self,
+            camera: camera,
+            view: view
+        )
+        
+        // Legacy road labels remain intentionally hidden. The Cartesian
+        // roads are uniform and unlabeled.
         
     }
 
@@ -439,27 +471,58 @@ extension VirtualMapScene {
 
 
         guard
-            let camera = camera,
-            let view = view
+            let camera,
+            let view
         else {
 
             return
         }
 
 
+        // =====================================================
+        // Step 7 — Camera Integration Safety
+        // =====================================================
+
+        // Pan, pinch and momentum already clamp during gestures. Re-clamping
+        // here also covers view-size/orientation changes from SwiftUI without
+        // requiring the user to touch the map again.
+        cameraController
+            .clampCamera(
+                in: self,
+                view: view
+            )
+
+
+        // =====================================================
+        // Visible Cartesian Grid Rendering
+        // =====================================================
+
+        gridRenderer
+            .updateVisibleRegion(
+                scene: self,
+                view: view
+            )
+
+
+        // =====================================================
+        // Persistent Time Axis
+        // =====================================================
+
         timeAxisRenderer.update(
-            scene: self,
-            camera: camera,
-            view: view
+            scene:
+                self,
+
+            camera:
+                camera,
+
+            view:
+                view
         )
-        
-        // Map level-of-detail
-        
-        worldArtRenderer.update(
-            cameraScale:
-                camera.xScale
-        )
-        
+
+
+        // Step 8 renderers internally skip work while the camera is
+        // stationary. When it moves, the visible grid reuses pooled cells
+        // and the time axis recalculates only its five semantic labels.
     }
     
 }
@@ -485,6 +548,7 @@ extension VirtualMapScene {
                 currentTime:
                     currentFrameTime
             )
+        
     }
 }
 
@@ -525,40 +589,40 @@ private extension VirtualMapScene {
 
         // MARK: Z Order
 
-        backgroundLayer.zPosition =
-            0
+        // Step 7 makes the scene hierarchy explicit and uses MapLayerZ as
+        // the single source of truth. The old mixed local/global values
+        // could place selection overlays above nodes or make renderer-local
+        // zPositions accidentally double-count.
 
+        backgroundLayer.zPosition =
+            MapLayerZ.terrain
+
+        // The Cartesian island renderer owns land + road markings. Its
+        // internal ordering handles shadow -> island -> dash.
         gridLayer.zPosition =
-            25
-        
+            MapLayerZ.blocks
+
+        // Reserved for semantic road overlays. The visible road surface is
+        // still the scene background / exposed space between islands.
         roadLayer.zPosition =
             MapLayerZ.roads
 
+        // Road selection belongs above road markings but below routes.
+        selectionLayer.zPosition =
+            MapLayerZ.roadSelection
 
         routeLayer.zPosition =
             MapLayerZ.routes
 
-
-        gameNodeLayer.zPosition =
-            MapLayerZ.nodes
-
-//        roadLayer.zPosition =
-//            100
-
-//        routeLayer.zPosition =
-//            200
+        // Current-time graphics, when enabled, should not cover game nodes.
+        timeIndicatorLayer.zPosition =
+            MapLayerZ.routes + 75
 
         nodeLayer.zPosition =
-            300
-
-        timeIndicatorLayer.zPosition =
-            350
-
-        selectionLayer.zPosition =
-            400
+            MapLayerZ.nodes
 
         debugLayer.zPosition =
-            1000
+            MapLayerZ.nodes + 10_000
 
 
         // MARK: Scene Hierarchy
@@ -611,10 +675,9 @@ private extension VirtualMapScene {
         )
 
 
-        roadLayer.addChild(
-            roadRenderer
-                .containerNode
-        )
+        // The road surface is rendered by MapGridRenderer. The semantic
+        // roadLayer remains available for future road-specific overlays but
+        // no legacy RoadLayerRenderer is attached.
         
         routeRenderer.attach(
               to:
@@ -642,13 +705,15 @@ private extension VirtualMapScene {
 }
 
 // =====================================================
-// MARK: - Coordinate Grid
+// MARK: - Cartesian Grid Foundation
 // =====================================================
 
 private extension VirtualMapScene {
 
     func configureCoordinateGrid() {
 
+        // Step 3 resets the old debug grid and prepares the dynamic
+        // rounded-island / road-dash renderer.
         gridRenderer.rebuild()
     }
 }
@@ -662,10 +727,10 @@ private extension VirtualMapScene {
 
     func configureRoadNetwork() {
 
-        roadRenderer.render(
-            graph:
-                roadGraph
-        )
+        // Intentionally empty visually.
+        //
+        // Step 4 uses GridRoadGraph for semantic road topology while the
+        // Step 3 grid/island renderer supplies the visible street surface.
     }
 }
 
@@ -808,9 +873,7 @@ extension VirtualMapScene {
             selection:
                 selection,
             graph:
-                roadGraph,
-            roadRenderer:
-                roadRenderer
+                roadGraph
         )
 
 
@@ -818,7 +881,15 @@ extension VirtualMapScene {
         // Game Node Selection
         // =================================================
 
-        refreshGameNodeRendering()
+        // Do NOT rebuild game nodes just because selection changed.
+        // Rebuilding cancels remote image tasks and can cause marker flicker.
+        // Selection is a cheap visual toggle on the already-rendered nodes.
+        gameNodeRenderer
+            .renderSelection(
+                selectedNodeID:
+                    selection
+                        .selectedNodeID
+            )
 
 
         // =================================================
@@ -832,18 +903,6 @@ extension VirtualMapScene {
             selectedRouteID:
                 selection
                     .selectedRouteID
-        )
-    }
-}
-
-private extension VirtualMapScene {
-
-    func refreshGameNodeRendering() {
-
-        gameNodeRenderer.render(
-            nodes:
-                gameNodes,
-            roadGraph: roadGraph
         )
     }
 }
@@ -1494,4 +1553,3 @@ private extension VirtualMapScene {
         )
     }
 }
-

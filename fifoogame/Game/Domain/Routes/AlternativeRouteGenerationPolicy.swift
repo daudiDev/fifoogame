@@ -38,10 +38,13 @@ struct AlternativeRouteGenerationPolicy:
     init(
         maxAlternatives:
             Int = 3,
+
         penaltyMultiplier:
             Double = 8,
+
         maxPlanningAttempts:
             Int = 40,
+
         maximumCostRatio:
             Double = 2.5
     ) {
@@ -75,6 +78,63 @@ struct AlternativeRouteGenerationPolicy:
     }
 
 
+    // =====================================================
+    // MARK: - Standard
+    //
+    // More exhaustive policy. Useful where responsiveness
+    // is less important than finding additional options.
+    // =====================================================
+
     static let standard =
-        AlternativeRouteGenerationPolicy()
+        AlternativeRouteGenerationPolicy(
+            maxAlternatives:
+                3,
+
+            penaltyMultiplier:
+                8,
+
+            maxPlanningAttempts:
+                40,
+
+            maximumCostRatio:
+                2.5
+        )
+
+
+    // =====================================================
+    // MARK: - Interactive Preview
+    //
+    // Intended for route generation while the user is
+    // actively using the day map.
+    //
+    // We only search for the number of alternatives the
+    // UI actually intends to show.
+    // =====================================================
+
+    static func interactivePreview(
+        maxAlternatives:
+            Int
+    ) -> AlternativeRouteGenerationPolicy {
+
+        AlternativeRouteGenerationPolicy(
+
+            maxAlternatives:
+                maxAlternatives,
+
+            penaltyMultiplier:
+                8,
+
+            // 40 is unnecessarily expensive for an
+            // interactive operation.
+            //
+            // For 2 alternatives, 10–12 attempts gives
+            // plenty of opportunity on this graph without
+            // letting the search explode.
+            maxPlanningAttempts:
+                12,
+
+            maximumCostRatio:
+                2.5
+        )
+    }
 }

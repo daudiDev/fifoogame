@@ -2,7 +2,7 @@
 //  GameNodeRenderer.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/22/26.
 //
 
 
@@ -93,14 +93,12 @@ final class GameNodeRenderer {
         containerNode.alpha =
             1
         
-        // IMPORTANT:
-          // Game nodes must always render above roads/routes.
-          containerNode.zPosition =
-              MapLayerZ.nodes
-        
+        // Step 7: the scene-level nodeLayer owns the global z-order.
+        // Keep this renderer local to its parent so the hierarchy remains:
+        // roads < route selection < routes < game nodes.
+        containerNode.zPosition =
+            0
     }
-    
-    //MARK: works???
     
 
 

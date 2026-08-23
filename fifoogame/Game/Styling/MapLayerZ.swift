@@ -2,11 +2,12 @@
 //  MapLayerZ.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/20/26.
+//  Created by Daudi Sagala on 8/21/26.
 //
 
 
 import CoreGraphics
+
 
 enum MapLayerZ {
 
@@ -45,6 +46,11 @@ enum MapLayerZ {
 
     static let roadSelection:
         CGFloat = 1_050
+
+    // Road names sit above roads/selections
+    // but below active routes.
+    static let roadLabels:
+        CGFloat = 1_075
 
     static let routes:
         CGFloat = 1_100

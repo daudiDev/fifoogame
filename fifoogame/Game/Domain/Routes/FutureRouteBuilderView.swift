@@ -1656,8 +1656,7 @@ private extension FutureRouteBuilderView {
         let succeeded =
             store
                 .addStopToFutureRouteDraft(
-                    nodeID:
-                        nodeID
+                    nodeID
                 )
 
 

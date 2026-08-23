@@ -2,107 +2,167 @@
 //  MapVisualTheme.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/22/26.
 //
+
 
 import SpriteKit
 
+
 enum MapVisualTheme {
 
-    // MARK: - Base Map
-    // Main background: #42566e
-    static let landColor = SKColor(
-        red: 26 / 255,
-        green: 38 / 255,
-        blue: 50 / 255,
-        alpha: 1
-    )
+    // =====================================================
+    // MARK: - Step 3 Cartesian Map
+    // =====================================================
 
-    // MARK: - Roads
-    // Light blue-gray tint of the background
-    static let roadSurfaceColor = SKColor(
-        red: 66 / 255,
-        green: 86 / 255,
-        blue: 110 / 255,
-        alpha: 0.95
-    )
+    /// The entire scene background is the continuous road surface.
+    /// Dark blue-charcoal keeps the existing Fifoo palette while matching
+    /// the supplied reference's road/land contrast.
+    static let roadSurfaceColor =
+        SKColor(
+            red: 26 / 255,
+            green: 38 / 255,
+            blue: 50 / 255,
+            alpha: 1
+        )
 
-    // Slightly brighter tint for highways
-    static let highwaySurfaceColor = SKColor(
-        red: 66 / 255,
-        green: 86 / 255,
-        blue: 110 / 255,
-        alpha: 1
-    )
-    
-    // Border color: medium blue-gray tint
-    static let roadBorderColor = SKColor(
-        red: 46 / 255,
-        green: 60 / 255,
-        blue: 77 / 255,
-        alpha: 0.95
-    )
 
-    // MARK: - Roundabout
-    static let roundaboutIslandColor = SKColor(
-        red: 26 / 255,
-        green: 38 / 255,
-        blue: 50 / 255,
-        alpha: 1
-    )
+    /// Raised rounded-square land islands.
+    static let islandFillColor =
+        SKColor(
+            red: 66 / 255,
+            green: 86 / 255,
+            blue: 110 / 255,
+            alpha: 1
+        )
 
-    static let roundaboutIslandBorderColor = SKColor(
-        red: 90 / 255,    // #5a7089
-        green: 112 / 255,
-        blue: 137 / 255,
-        alpha: 0.18
-    )
 
-    // MARK: - Future Environment
-    static let parkColor = SKColor(
-        red: 92 / 255,
-        green: 135 / 255,
-        blue: 112 / 255,
-        alpha: 1
-    )
+    /// Thin lighter curb/perimeter around each island.
+    static let islandBorderColor =
+        SKColor(
+            red: 112 / 255,
+            green: 133 / 255,
+            blue: 155 / 255,
+            alpha: 0.72
+        )
 
-    static let waterColor = SKColor(
-        red: 97 / 255,
-        green: 141 / 255,
-        blue: 171 / 255,
-        alpha: 1
-    )
 
-    // MARK: - Coordinate Grid
-    static let minorGridColor = SKColor(
-        red: 90 / 255,    // #5a7089
-        green: 112 / 255,
-        blue: 137 / 255,
-        alpha: 0.18
-    )
+    /// Subtle lower/right depth edge beneath each island.
+    static let islandShadowColor =
+        SKColor(
+            red: 0,
+            green: 0,
+            blue: 0,
+            alpha: 0.24
+        )
 
-    static let majorGridColor = SKColor(
-        red: 90 / 255,    // #5a7089
-        green: 112 / 255,
-        blue: 137 / 255,
-        alpha: 0.18
-    )
 
-    static let referenceBoundaryColor = SKColor(
-        red: 147 / 255,   // #93a5b8
-        green: 165 / 255,
-        blue: 184 / 255,
-        alpha: 0.38
-    )
+    /// Sparse center markings inside each road section.
+    static let roadDashColor =
+        SKColor(
+            red: 235 / 255,
+            green: 240 / 255,
+            blue: 245 / 255,
+            alpha: 0.72
+        )
 
-    static let gridLabelColor = SKColor(
-        red: 186 / 255,   // #bac7d5
-        green: 199 / 255,
-        blue: 213 / 255,
-        alpha: 0.62
-    )
-    
+
+    // =====================================================
+    // MARK: - Compatibility Aliases
+    // =====================================================
+
+    /// Legacy renderers still compile during the staged migration. Step 3
+    /// no longer uses them for the visible map.
+    static let landColor =
+        islandFillColor
+
+
+    static let highwaySurfaceColor =
+        roadSurfaceColor
+
+
+    static let roadBorderColor =
+        SKColor(
+            red: 46 / 255,
+            green: 60 / 255,
+            blue: 77 / 255,
+            alpha: 0.95
+        )
+
+
+    static let roundaboutIslandColor =
+        islandFillColor
+
+
+    static let roundaboutIslandBorderColor =
+        SKColor(
+            red: 90 / 255,
+            green: 112 / 255,
+            blue: 137 / 255,
+            alpha: 0.18
+        )
+
+
+    // =====================================================
+    // MARK: - Legacy Environment Compatibility
+    // =====================================================
+
+    static let parkColor =
+        SKColor(
+            red: 92 / 255,
+            green: 135 / 255,
+            blue: 112 / 255,
+            alpha: 1
+        )
+
+
+    static let waterColor =
+        SKColor(
+            red: 97 / 255,
+            green: 141 / 255,
+            blue: 171 / 255,
+            alpha: 1
+        )
+
+
+    // =====================================================
+    // MARK: - Legacy Coordinate Grid Compatibility
+    // =====================================================
+
+    static let minorGridColor =
+        SKColor(
+            red: 90 / 255,
+            green: 112 / 255,
+            blue: 137 / 255,
+            alpha: 0.18
+        )
+
+
+    static let majorGridColor =
+        minorGridColor
+
+
+    static let referenceBoundaryColor =
+        SKColor(
+            red: 147 / 255,
+            green: 165 / 255,
+            blue: 184 / 255,
+            alpha: 0.38
+        )
+
+
+    static let gridLabelColor =
+        SKColor(
+            red: 186 / 255,
+            green: 199 / 255,
+            blue: 213 / 255,
+            alpha: 0.62
+        )
+
+
+    // =====================================================
     // MARK: - Selection
+    // =====================================================
 
     static let roadSelectionColor =
         SKColor(
@@ -120,9 +180,12 @@ enum MapVisualTheme {
             blue: 246 / 255,
             alpha: 0.38
         )
-    
-    
+
+
+    // =====================================================
     // MARK: - Game Nodes
+    // =====================================================
+
     static let nodeFillColor =
         SKColor(
             red: 216 / 255,

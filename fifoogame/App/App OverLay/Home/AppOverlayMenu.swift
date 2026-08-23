@@ -39,6 +39,8 @@ struct AppOverlayMenu: View {
                 .padding(.vertical, 30)
             }
             
+            Divider()
+            
             //MARK: add params
             NavigationLink{ PostsView()} label: {
                 HStack(alignment: .center, spacing: 5) {

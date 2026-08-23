@@ -76,7 +76,8 @@ struct AppOverLayBottomRow: View {
                 
                 
             }
-            .padding(12)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
             .background(RoundedRectangle(cornerRadius: 30).fill(.ultraThinMaterial))
             .padding(.horizontal)
         }

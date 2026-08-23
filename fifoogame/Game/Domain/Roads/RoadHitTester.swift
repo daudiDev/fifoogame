@@ -2,7 +2,7 @@
 //  RoadHitTester.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/22/26.
 //
 
 
@@ -32,81 +32,362 @@ struct RoadHitTester {
         tolerance: CGFloat
     ) -> Hit? {
 
-        let verticesByID =
-            Dictionary(
-                uniqueKeysWithValues:
-                    graph.vertices.map {
-                        ($0.id, $0)
-                    }
-            )
+        if graph.id == GridRoadGraph.graphID {
 
-
-        // =========================================
-        // Vertices get priority.
-        // =========================================
-
-        if let vertex =
-            nearestInteractiveVertex(
-                to: point,
-                graph: graph,
+            return gridHitTest(
+                at:
+                    point,
+                graph:
+                    graph,
                 tolerance:
-                    tolerance * 1.15
-            )
-        {
-
-            return .vertex(
-                vertex.id
+                    tolerance
             )
         }
 
 
-        // =========================================
-        // Resolve visual roundabout geometry.
-        // =========================================
+        // Compatibility fallback for injected/test graphs while the rest of
+        // the app migrates. It intentionally uses one uniform road width;
+        // the old highway/roundabout/cul-de-sac width rules are gone.
+        return genericHitTest(
+            at:
+                point,
+            graph:
+                graph,
+            tolerance:
+                tolerance
+        )
+    }
+}
 
-        let roundabouts =
-            resolveRoundabouts(
-                graph:
-                    graph,
-                verticesByID:
-                    verticesByID
+
+// =====================================================
+// MARK: - Cartesian Grid Hit Testing
+// =====================================================
+
+private extension RoadHitTester {
+
+    func gridHitTest(
+        at point: CGPoint,
+        graph: RoadGraph,
+        tolerance: CGFloat
+    ) -> Hit? {
+
+        let pitch =
+            GridMapConfiguration
+                .cellPitchWorld
+
+        guard pitch > 0 else {
+            return nil
+        }
+
+
+        let extraTolerance =
+            max(
+                0,
+                tolerance
+            )
+
+        let roadThreshold =
+            GridMapConfiguration
+                .roadHalfWidthWorld
+            + extraTolerance
+
+
+        // -------------------------------------------------
+        // Reject taps completely outside the semantic day.
+        // Horizontal streets at 00:00 and 24:00 are valid,
+        // so include the road/touch threshold around them.
+        // -------------------------------------------------
+
+        guard
+            point.y
+                <= GridMapGeometry.dayTopY
+                    + roadThreshold,
+            point.y
+                >= GridMapGeometry.dayBottomY
+                    - roadThreshold
+        else {
+
+            return nil
+        }
+
+
+        let nearestColumn =
+            GridRoadTopology
+                .nearestColumn(
+                    toWorldX:
+                        point.x
+                )
+
+        let nearestRow =
+            GridRoadTopology
+                .nearestRow(
+                    toWorldY:
+                        point.y
+                )
+
+
+        let nearestVerticalX =
+            GridMapGeometry
+                .verticalStreetCenterX(
+                    column:
+                        nearestColumn
+                )
+
+        let nearestHorizontalY =
+            GridMapGeometry
+                .horizontalStreetCenterY(
+                    row:
+                        nearestRow
+                )
+
+
+        let distanceToVertical =
+            abs(
+                point.x
+                - nearestVerticalX
+            )
+
+        let distanceToHorizontal =
+            abs(
+                point.y
+                - nearestHorizontalY
             )
 
 
-        var bestEdge:
-            RoadEdgeID?
+        let isInsideVerticalRoad =
+            distanceToVertical
+            <= roadThreshold
+
+        let rowIsValid =
+            GridRoadTopology
+                .intersectionRowRange
+                .contains(
+                    nearestRow
+                )
+
+        let isInsideHorizontalRoad =
+            rowIsValid
+            && distanceToHorizontal
+                <= roadThreshold
 
 
-        var bestDistance =
+        // -------------------------------------------------
+        // Intersection first.
+        //
+        // The visual intersection is the overlap of the two
+        // wide road corridors, so use the same geometry here.
+        // -------------------------------------------------
+
+        if
+            isInsideVerticalRoad,
+            isInsideHorizontalRoad
+        {
+
+            let intersection =
+                GridIntersectionID(
+                    column:
+                        nearestColumn,
+                    row:
+                        nearestRow
+                )
+
+            let vertexID =
+                GridRoadTopology
+                    .vertexID(
+                        for:
+                            intersection
+                    )
+
+
+            if graph.vertex(id: vertexID) != nil {
+
+                return .vertex(
+                    vertexID
+                )
+            }
+        }
+
+
+        // -------------------------------------------------
+        // Horizontal road section.
+        // -------------------------------------------------
+
+        if isInsideHorizontalRoad {
+
+            let leftColumn =
+                Int(
+                    floor(
+                        (
+                            point.x
+                            - GridMapGeometry.origin.x
+                        )
+                        / pitch
+                    )
+                )
+
+            let edgeID =
+                GridRoadTopology
+                    .horizontalEdgeID(
+                        row:
+                            nearestRow,
+                        leftColumn:
+                            leftColumn
+                    )
+
+
+            if graph.edge(id: edgeID) != nil {
+
+                return .edge(
+                    edgeID
+                )
+            }
+        }
+
+
+        // -------------------------------------------------
+        // Vertical road section.
+        // -------------------------------------------------
+
+        if isInsideVerticalRoad {
+
+            let topRow =
+                Int(
+                    floor(
+                        (
+                            GridMapGeometry.origin.y
+                            - point.y
+                        )
+                        / pitch
+                    )
+                )
+
+
+            guard
+                topRow >= 0,
+                topRow
+                    < GridRoadTopology
+                        .maximumIntersectionRow
+            else {
+
+                return nil
+            }
+
+
+            let edgeID =
+                GridRoadTopology
+                    .verticalEdgeID(
+                        column:
+                            nearestColumn,
+                        topRow:
+                            topRow
+                    )
+
+
+            if graph.edge(id: edgeID) != nil {
+
+                return .edge(
+                    edgeID
+                )
+            }
+        }
+
+
+        return nil
+    }
+}
+
+
+// =====================================================
+// MARK: - Compatibility Fallback
+// =====================================================
+
+private extension RoadHitTester {
+
+    func genericHitTest(
+        at point: CGPoint,
+        graph: RoadGraph,
+        tolerance: CGFloat
+    ) -> Hit? {
+
+        let threshold =
+            GridMapConfiguration
+                .roadHalfWidthWorld
+            + max(
+                0,
+                tolerance
+            )
+
+
+        // Vertices first.
+        var bestVertex: RoadVertex?
+        var bestVertexDistance =
             CGFloat.greatestFiniteMagnitude
 
 
-        for edge in graph.edges {
+        for vertex in graph.vertices {
+
+            let location =
+                vertex.worldPoint.cgPoint
+
+            let distance =
+                hypot(
+                    location.x - point.x,
+                    location.y - point.y
+                )
+
 
             guard
-                edge.attributes
-                    .isTraversable,
-
-                edge.travelDirection
-                    != .closed
+                distance <= threshold,
+                distance < bestVertexDistance
             else {
 
                 continue
             }
 
 
+            bestVertexDistance = distance
+            bestVertex = vertex
+        }
+
+
+        if let bestVertex {
+
+            return .vertex(
+                bestVertex.id
+            )
+        }
+
+
+        // Edges second.
+        var bestEdge: RoadEdge?
+        var bestEdgeDistance =
+            CGFloat.greatestFiniteMagnitude
+
+
+        for edge in graph.edges {
+
             guard
-                let points =
-                    sampledPoints(
-                        for:
-                            edge,
-                        verticesByID:
-                            verticesByID,
-                        roundabouts:
-                            roundabouts
-                    )
+                edge.attributes.isTraversable,
+                edge.travelDirection != .closed
             else {
 
+                continue
+            }
+
+
+            let sampled =
+                RoadEdgeGeometry
+                    .sampledPoints(
+                        for:
+                            edge,
+                        graph:
+                            graph
+                    )
+                    .map(\.cgPoint)
+
+
+            guard sampled.count >= 2 else {
                 continue
             }
 
@@ -116,794 +397,48 @@ struct RoadHitTester {
                     from:
                         point,
                     toPolyline:
-                        points
+                        sampled
                 )
 
 
-            /*
-             Add part of the actual road width
-             to the finger tolerance.
-
-             This means tapping near the outer
-             edge of a wide highway still works.
-             */
-
-            let threshold =
-                tolerance
-                +
-                approximateHalfRoadWidth(
-                    for:
-                        edge.roadClass
-                )
-
-
-            guard distance <=
-                threshold
+            guard
+                distance <= threshold,
+                distance < bestEdgeDistance
             else {
 
                 continue
             }
 
 
-            if distance <
-                bestDistance {
-
-                bestDistance =
-                    distance
-
-
-                bestEdge =
-                    edge.id
-            }
+            bestEdgeDistance = distance
+            bestEdge = edge
         }
 
 
         guard let bestEdge else {
-
             return nil
         }
 
 
         return .edge(
-            bestEdge
+            bestEdge.id
         )
     }
 }
 
-// =====================================================
-// MARK: - Vertex Hit Testing
-// =====================================================
-
-private extension RoadHitTester {
-
-    func nearestInteractiveVertex(
-        to point:
-            CGPoint,
-        graph:
-            RoadGraph,
-        tolerance:
-            CGFloat
-    ) -> RoadVertex? {
-
-        var bestVertex:
-            RoadVertex?
-
-
-        var bestDistance =
-            CGFloat.greatestFiniteMagnitude
-
-
-        for vertex in
-            graph.vertices {
-
-            let degree =
-                graph.degree(
-                    of:
-                        vertex.id
-                )
-
-
-            /*
-             We don't want invisible two-edge
-             geometry/junction control points to
-             constantly steal road taps.
-
-             Interactive:
-             - real intersections
-             - 3+ way junctions
-             - roundabout entry/exit
-             - cul-de-sac end
-             */
-
-            let isInteractive =
-                vertex.kind ==
-                    .intersection
-                ||
-                vertex.kind ==
-                    .circleEntry
-                ||
-                vertex.kind ==
-                    .circleExit
-                ||
-                vertex.kind ==
-                    .culDeSacEnd
-                ||
-                degree >= 3
-
-
-            guard isInteractive else {
-
-                continue
-            }
-
-
-            let location =
-                vertex
-                    .worldPoint
-                    .cgPoint
-
-
-            let distance =
-                hypot(
-                    location.x
-                    - point.x,
-
-                    location.y
-                    - point.y
-                )
-
-
-            guard distance <=
-                tolerance
-            else {
-
-                continue
-            }
-
-
-            if distance <
-                bestDistance {
-
-                bestDistance =
-                    distance
-
-
-                bestVertex =
-                    vertex
-            }
-        }
-
-
-        return bestVertex
-    }
-}
 
 // =====================================================
-// MARK: - Road Geometry Sampling
-// =====================================================
-
-private extension RoadHitTester {
-
-    func sampledPoints(
-        for edge:
-            RoadEdge,
-        verticesByID:
-            [RoadVertexID: RoadVertex],
-        roundabouts:
-            [RoadEdgeID:
-                RoundaboutGeometry]
-    ) -> [CGPoint]? {
-
-        guard
-            let from =
-                verticesByID[
-                    edge.fromID
-                ],
-
-            let to =
-                verticesByID[
-                    edge.toID
-                ]
-        else {
-
-            return nil
-        }
-
-
-        let start =
-            from
-                .worldPoint
-                .cgPoint
-
-
-        let end =
-            to
-                .worldPoint
-                .cgPoint
-
-
-        // -----------------------------------------
-        // Roundabout visual geometry
-        // -----------------------------------------
-
-        if
-            edge.roadClass ==
-                .circle,
-
-            let roundabout =
-                roundabouts[
-                    edge.id
-                ]
-        {
-
-            return sampleEllipseArc(
-                start:
-                    start,
-                end:
-                    end,
-                geometry:
-                    roundabout,
-                steps:
-                    18
-            )
-        }
-
-
-        switch edge.shape {
-
-        // -----------------------------------------
-        // Straight
-        // -----------------------------------------
-
-        case .straight:
-
-            return [
-                start,
-                end
-            ]
-
-
-        // -----------------------------------------
-        // Polyline
-        // -----------------------------------------
-
-        case let .polyline(
-            intermediatePoints
-        ):
-
-            return
-                [start]
-                +
-                intermediatePoints.map(
-                    \.cgPoint
-                )
-                +
-                [end]
-
-
-        // -----------------------------------------
-        // Bézier
-        // -----------------------------------------
-
-        case let .cubicBezier(
-            control1,
-            control2
-        ):
-
-            return sampleCubic(
-                start:
-                    start,
-                control1:
-                    control1.cgPoint,
-                control2:
-                    control2.cgPoint,
-                end:
-                    end,
-                steps:
-                    20
-            )
-        }
-    }
-
-
-    func sampleCubic(
-        start:
-            CGPoint,
-        control1:
-            CGPoint,
-        control2:
-            CGPoint,
-        end:
-            CGPoint,
-        steps:
-            Int
-    ) -> [CGPoint] {
-
-        var result:
-            [CGPoint] = []
-
-
-        for index in
-            0...steps {
-
-            let t =
-                CGFloat(index)
-                /
-                CGFloat(steps)
-
-
-            let u =
-                1 - t
-
-
-            let x =
-                u * u * u
-                * start.x
-                +
-                3 * u * u * t
-                * control1.x
-                +
-                3 * u * t * t
-                * control2.x
-                +
-                t * t * t
-                * end.x
-
-
-            let y =
-                u * u * u
-                * start.y
-                +
-                3 * u * u * t
-                * control1.y
-                +
-                3 * u * t * t
-                * control2.y
-                +
-                t * t * t
-                * end.y
-
-
-            result.append(
-
-                CGPoint(
-                    x:
-                        x,
-                    y:
-                        y
-                )
-            )
-        }
-
-
-        return result
-    }
-}
-
-// =====================================================
-// MARK: - Roundabout Geometry
-// =====================================================
-
-private extension RoadHitTester {
-
-    struct RoundaboutGeometry {
-
-        let center:
-            CGPoint
-
-        let radiusX:
-            CGFloat
-
-        let radiusY:
-            CGFloat
-    }
-
-
-    func resolveRoundabouts(
-        graph:
-            RoadGraph,
-        verticesByID:
-            [RoadVertexID: RoadVertex]
-    ) -> [RoadEdgeID:
-            RoundaboutGeometry] {
-
-        let circleEdges =
-            graph.edges.filter {
-
-                $0.roadClass ==
-                    .circle
-            }
-
-
-        guard !circleEdges.isEmpty else {
-
-            return [:]
-        }
-
-
-        let edgesByID =
-            Dictionary(
-                uniqueKeysWithValues:
-                    circleEdges.map {
-                        ($0.id, $0)
-                    }
-            )
-
-
-        var edgesByVertex:
-            [RoadVertexID:
-                [RoadEdgeID]] = [:]
-
-
-        for edge in
-            circleEdges {
-
-            edgesByVertex[
-                edge.fromID,
-                default: []
-            ]
-            .append(
-                edge.id
-            )
-
-
-            edgesByVertex[
-                edge.toID,
-                default: []
-            ]
-            .append(
-                edge.id
-            )
-        }
-
-
-        var unvisited =
-            Set(
-                circleEdges.map(
-                    \.id
-                )
-            )
-
-
-        var result:
-            [RoadEdgeID:
-                RoundaboutGeometry] = [:]
-
-
-        while let firstEdgeID =
-            unvisited.first {
-
-            var stack =
-                [firstEdgeID]
-
-
-            var componentEdges =
-                Set<RoadEdgeID>()
-
-
-            var componentVertices =
-                Set<RoadVertexID>()
-
-
-            while let edgeID =
-                stack.popLast() {
-
-                guard
-                    componentEdges
-                        .insert(
-                            edgeID
-                        )
-                        .inserted,
-
-                    let edge =
-                        edgesByID[
-                            edgeID
-                        ]
-                else {
-
-                    continue
-                }
-
-
-                unvisited.remove(
-                    edgeID
-                )
-
-
-                componentVertices.insert(
-                    edge.fromID
-                )
-
-
-                componentVertices.insert(
-                    edge.toID
-                )
-
-
-                for vertexID in [
-                    edge.fromID,
-                    edge.toID
-                ] {
-
-                    for neighborEdgeID in
-                        edgesByVertex[
-                            vertexID,
-                            default: []
-                        ] {
-
-                        if !componentEdges
-                            .contains(
-                                neighborEdgeID
-                            )
-                        {
-
-                            stack.append(
-                                neighborEdgeID
-                            )
-                        }
-                    }
-                }
-            }
-
-
-            let points =
-                componentVertices
-                    .compactMap {
-
-                        verticesByID[$0]?
-                            .worldPoint
-                            .cgPoint
-                    }
-
-
-            guard points.count >= 3 else {
-
-                continue
-            }
-
-
-            let center =
-                CGPoint(
-                    x:
-                        points
-                            .map(\.x)
-                            .reduce(0, +)
-                        /
-                        CGFloat(
-                            points.count
-                        ),
-
-                    y:
-                        points
-                            .map(\.y)
-                            .reduce(0, +)
-                        /
-                        CGFloat(
-                            points.count
-                        )
-                )
-
-
-            let radiusX =
-                points
-                    .map {
-
-                        abs(
-                            $0.x
-                            - center.x
-                        )
-                    }
-                    .max()
-                ?? 1
-
-
-            let radiusY =
-                points
-                    .map {
-
-                        abs(
-                            $0.y
-                            - center.y
-                        )
-                    }
-                    .max()
-                ?? 1
-
-
-            let geometry =
-                RoundaboutGeometry(
-                    center:
-                        center,
-                    radiusX:
-                        radiusX,
-                    radiusY:
-                        radiusY
-                )
-
-
-            for edgeID in
-                componentEdges {
-
-                result[
-                    edgeID
-                ] =
-                    geometry
-            }
-        }
-
-
-        return result
-    }
-}
-
-// =====================================================
-// MARK: - Roundabout Arc Sampling
-// =====================================================
-
-private extension RoadHitTester {
-
-    func sampleEllipseArc(
-        start:
-            CGPoint,
-        end:
-            CGPoint,
-        geometry:
-            RoundaboutGeometry,
-        steps:
-            Int
-    ) -> [CGPoint] {
-
-        let radiusX =
-            max(
-                geometry.radiusX,
-                0.001
-            )
-
-
-        let radiusY =
-            max(
-                geometry.radiusY,
-                0.001
-            )
-
-
-        let startAngle =
-            atan2(
-                Double(
-                    (
-                        start.y
-                        -
-                        geometry.center.y
-                    )
-                    /
-                    radiusY
-                ),
-                Double(
-                    (
-                        start.x
-                        -
-                        geometry.center.x
-                    )
-                    /
-                    radiusX
-                )
-            )
-
-
-        let endAngle =
-            atan2(
-                Double(
-                    (
-                        end.y
-                        -
-                        geometry.center.y
-                    )
-                    /
-                    radiusY
-                ),
-                Double(
-                    (
-                        end.x
-                        -
-                        geometry.center.x
-                    )
-                    /
-                    radiusX
-                )
-            )
-
-
-        var delta =
-            endAngle
-            -
-            startAngle
-
-
-        while delta >
-            Double.pi {
-
-            delta -=
-                2
-                *
-                Double.pi
-        }
-
-
-        while delta <
-            -Double.pi {
-
-            delta +=
-                2
-                *
-                Double.pi
-        }
-
-
-        var points:
-            [CGPoint] = []
-
-
-        for index in
-            0...steps {
-
-            let fraction =
-                Double(index)
-                /
-                Double(steps)
-
-
-            let angle =
-                startAngle
-                +
-                delta
-                *
-                fraction
-
-
-            points.append(
-
-                CGPoint(
-                    x:
-                        geometry.center.x
-                        +
-                        radiusX
-                        *
-                        CGFloat(
-                            cos(angle)
-                        ),
-
-                    y:
-                        geometry.center.y
-                        +
-                        radiusY
-                        *
-                        CGFloat(
-                            sin(angle)
-                        )
-                )
-            )
-        }
-
-
-        return points
-    }
-}
-
-// =====================================================
-// MARK: - Distance
+// MARK: - Geometry Helpers
 // =====================================================
 
 private extension RoadHitTester {
 
     func distance(
-        from point:
-            CGPoint,
-        toPolyline points:
-            [CGPoint]
+        from point: CGPoint,
+        toPolyline points: [CGPoint]
     ) -> CGFloat {
 
         guard points.count >= 2 else {
-
             return .greatestFiniteMagnitude
         }
 
@@ -912,24 +447,19 @@ private extension RoadHitTester {
             CGFloat.greatestFiniteMagnitude
 
 
-        for index in
-            0..<(points.count - 1) {
-
-            let distance =
-                distanceToSegment(
-                    point:
-                        point,
-                    start:
-                        points[index],
-                    end:
-                        points[index + 1]
-                )
-
+        for index in 0..<(points.count - 1) {
 
             best =
                 min(
                     best,
-                    distance
+                    distance(
+                        from:
+                            point,
+                        toSegmentFrom:
+                            points[index],
+                        to:
+                            points[index + 1]
+                    )
                 )
         }
 
@@ -938,138 +468,60 @@ private extension RoadHitTester {
     }
 
 
-    func distanceToSegment(
-        point:
-            CGPoint,
-        start:
-            CGPoint,
-        end:
-            CGPoint
+    func distance(
+        from point: CGPoint,
+        toSegmentFrom start: CGPoint,
+        to end: CGPoint
     ) -> CGFloat {
 
         let dx =
-            end.x
-            -
-            start.x
-
+            end.x - start.x
 
         let dy =
-            end.y
-            -
-            start.y
-
+            end.y - start.y
 
         let lengthSquared =
             dx * dx
-            +
-            dy * dy
+            + dy * dy
 
 
-        guard lengthSquared >
-            0.0001
-        else {
+        guard lengthSquared > 0 else {
 
             return hypot(
-                point.x
-                -
-                start.x,
-
-                point.y
-                -
-                start.y
+                point.x - start.x,
+                point.y - start.y
             )
         }
 
 
         let rawT =
             (
-                (
-                    point.x
-                    -
-                    start.x
-                )
-                *
-                dx
-                +
-                (
-                    point.y
-                    -
-                    start.y
-                )
-                *
-                dy
+                (point.x - start.x) * dx
+                + (point.y - start.y) * dy
             )
-            /
-            lengthSquared
-
+            / lengthSquared
 
         let t =
             min(
-                1,
                 max(
-                    0,
-                    rawT
-                )
+                    rawT,
+                    0
+                ),
+                1
             )
 
-
-        let closest =
+        let projected =
             CGPoint(
                 x:
-                    start.x
-                    +
-                    t * dx,
-
+                    start.x + dx * t,
                 y:
-                    start.y
-                    +
-                    t * dy
+                    start.y + dy * t
             )
 
 
         return hypot(
-            point.x
-            -
-            closest.x,
-
-            point.y
-            -
-            closest.y
+            point.x - projected.x,
+            point.y - projected.y
         )
     }
-
-
-    func approximateHalfRoadWidth(
-        for roadClass:
-            RoadClass
-    ) -> CGFloat {
-
-        /*
-         Matches approximately the narrowed
-         3D.1 road surfaces.
-         */
-
-        switch roadClass {
-
-        case .local:
-            return 6.5
-
-        case .connector:
-            return 7
-
-        case .culDeSac:
-            return 6.5
-
-        case .arterial:
-            return 10
-
-        case .circle:
-            return 10
-
-        case .highway:
-            return 14
-        }
-    }
 }
-
-

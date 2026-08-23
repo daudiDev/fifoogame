@@ -1,26 +1,28 @@
 //
-//  GameStore 2.swift
+//  GameStore.swift
 //  fifoogame
 //
 //  Created by Daudi Sagala on 8/18/26.
 //
 
 
-//
-//  GameStore.swift
-//  Fifoo
-//
 
 import Foundation
 import Combine
 
 
 @MainActor
-final class GameStore:
-    ObservableObject {
+final class GameStore: ObservableObject {
+    
+#if DEBUG
+
+@Published
+private(set) var debugRouteScenario:
+    DebugRouteScenario?
+
+#endif
     
     // MARK: - Game Day
-    
     @Published
     private(set) var gameDay:
     GameDay
@@ -214,7 +216,7 @@ final class GameStore:
         GameDay = .today(),
         
         roadGraph:
-        RoadGraph = DenseCityRoadGraph.make(),
+        RoadGraph = GridRoadGraph.make(),
         
         gameNodes:
         [GameMapNode] = SampleGameNodes.make(),
@@ -1352,14 +1354,46 @@ final class GameStore:
         return true
     }
     
+    // =====================================================
+    // MARK: - Add Stop To Future Route Draft
+    // =====================================================
+
+
     @discardableResult
     func addStopToFutureRouteDraft(
-        nodeID:
-            GameNodeID
+        _ nodeID: GameNodeID
     ) -> Bool {
 
         // =================================================
-        // Already present
+        // 1. Node must exist.
+        //
+        // We intentionally do NOT check:
+        //
+        // - road eligibility
+        // - time validity
+        // - whether the node is in the past
+        //
+        // FutureRouteDraftValidator handles those.
+        // =================================================
+
+        guard
+            gameNode(
+                id:
+                    nodeID
+            )
+            != nil
+        else {
+
+            print(
+                "❌ addStopToFutureRouteDraft: Node does not exist."
+            )
+
+            return false
+        }
+
+
+        // =================================================
+        // 2. Prevent duplicate stops.
         // =================================================
 
         guard
@@ -1370,91 +1404,25 @@ final class GameStore:
                 )
         else {
 
-            return false
-        }
-
-
-        // =================================================
-        // Node exists
-        // =================================================
-
-        guard let node =
-            gameNode(
-                id:
-                    nodeID
+            print(
+                "⚠️ addStopToFutureRouteDraft: Node is already in the draft."
             )
-        else {
 
             return false
         }
 
 
         // =================================================
-        // Must be enabled
-        // =================================================
-
-        guard node.isEnabled else {
-
-            return false
-        }
-
-
-        // =================================================
-        // Must actually be road-route eligible
-        // =================================================
-
-        let resolver =
-            GameNodeRouteAnchorResolver()
-
-
-        guard
-            resolver.resolve(
-                node:
-                    node,
-                graph:
-                    roadGraph
-            )
-            != nil
-        else {
-
-            return false
-        }
-
-
-        // =================================================
-        // Must not be in the past
-        // =================================================
-
-        guard let coordinate =
-            GameNodePlacementResolver
-                .mapCoordinate(
-                    for:
-                        node,
-                    graph:
-                        roadGraph
-                )
-        else {
-
-            return false
-        }
-
-
-        guard
-            coordinate.time >=
-                currentDayTime
-        else {
-
-            return false
-        }
-
-
-        // =================================================
-        // Add
+        // 3. Copy the value-type draft.
         // =================================================
 
         var updatedDraft =
             futureRouteDraft
 
+
+        // =================================================
+        // 4. Add stop.
+        // =================================================
 
         updatedDraft
             .stopNodeIDs
@@ -1463,11 +1431,41 @@ final class GameStore:
             )
 
 
+        // =================================================
+        // 5. Publish updated draft.
+        // =================================================
+
         futureRouteDraft =
             updatedDraft
 
 
-        invalidateFutureRouteDraftPlan()
+        // =================================================
+        // 6. Existing planning results are now stale.
+        // =================================================
+
+        futureRouteDraftPlan =
+            nil
+
+
+        futureRoutePreview =
+            nil
+
+
+        #if DEBUG
+
+        print(
+            "✅ Added route stop:",
+            nodeID
+        )
+
+        print(
+            "Draft stop count:",
+            futureRouteDraft
+                .stopNodeIDs
+                .count
+        )
+
+        #endif
 
 
         return true
@@ -2286,8 +2284,10 @@ final class GameStore:
         //
         //    etc.
         //
-        //    Road traffic direction and forward-time rules
-        //    are enforced by RoadPathfinder.
+        //    Step 5 directional rules are enforced by RoadPathfinder:
+        //    LEFT / RIGHT / DOWN are allowed; UP is never allowed.
+        //    The search also penalizes unnecessary turns and horizontal
+        //    direction changes while rejecting loops/reversals.
         // =================================================
 
         let planningResult =
@@ -2467,6 +2467,330 @@ final class GameStore:
 
 
         return true
+    }
+    
+    // =====================================================
+    // MARK: - Generate Future Route Preview Alternatives
+    // =====================================================
+    @discardableResult
+    func generateFutureRoutePreviewAlternatives(
+        maximumAlternatives:
+            Int = 3
+    ) -> FutureRoutePreview? {
+
+        // =================================================
+        // 1. A successfully planned draft must exist.
+        // =================================================
+
+        guard let planningResult =
+            futureRouteDraftPlan
+        else {
+
+            print(
+                "❌ generateFutureRoutePreviewAlternatives: No future route draft plan."
+            )
+
+            futureRoutePreview =
+                nil
+
+            return nil
+        }
+
+
+        guard
+            planningResult.succeeded
+        else {
+
+            print(
+                "❌ generateFutureRoutePreviewAlternatives: Draft planning did not succeed."
+            )
+
+            futureRoutePreview =
+                nil
+
+            return nil
+        }
+
+
+        // =================================================
+        // 2. Extract primary planned route.
+        // =================================================
+
+        guard let primaryRoute =
+            planningResult
+                .plannedRoute
+        else {
+
+            print(
+                "❌ generateFutureRoutePreviewAlternatives: Planning result contains no route."
+            )
+
+            futureRoutePreview =
+                nil
+
+            return nil
+        }
+
+
+        guard
+            primaryRoute
+                .isFullyPlanned
+        else {
+
+            print(
+                "❌ generateFutureRoutePreviewAlternatives: Primary route is not fully planned."
+            )
+
+            futureRoutePreview =
+                nil
+
+            return nil
+        }
+
+
+        // =================================================
+        // 3. Generate alternate routes using the actual
+        //    AlternativeRouteGenerator API.
+        //
+        // Your generator internally:
+        //
+        // - penalizes selected road edges
+        // - calls unplannedPreservingStart()
+        // - replans through GameRoutePathPlanner
+        // - rejects duplicate paths
+        // - checks cost ratios
+        // - assigns new RouteIDs
+        // =================================================
+
+        let generator =
+            AlternativeRouteGenerator(
+                policy:
+                    .interactivePreview(
+                        maxAlternatives:
+                            maximumAlternatives
+                    )
+            )
+
+
+        let generatedAlternatives =
+            generator.generate(
+                from:
+                    primaryRoute,
+
+                gameNodes:
+                    gameNodes,
+
+                roadGraph:
+                    roadGraph,
+
+                timePolicy:
+                    .dayMap
+            )
+
+
+        // =================================================
+        // 4. Keep only fully planned alternatives.
+        //
+        // The generator already guarantees this in normal
+        // operation, but this protects FutureRoutePreview
+        // from invalid state.
+        // =================================================
+
+        let plannedAlternatives =
+            generatedAlternatives
+                .filter {
+
+                    $0.isFullyPlanned
+                }
+
+
+        // =================================================
+        // 5. Remove anything that somehow duplicates the
+        //    primary route.
+        //
+        // AlternativeRouteGenerator already performs this
+        // check, but keeping the boundary defensive here is
+        // useful because preview state should never contain
+        // duplicate paths.
+        // =================================================
+
+        let primarySignature =
+            primaryRoute
+                .plannedPathSignature
+
+
+        let nonPrimaryAlternatives =
+            plannedAlternatives
+                .filter { alternative in
+
+                    guard
+                        let alternativeSignature =
+                            alternative
+                                .plannedPathSignature
+                    else {
+
+                        return false
+                    }
+
+
+                    guard
+                        let primarySignature
+                    else {
+
+                        return true
+                    }
+
+
+                    return
+                        alternativeSignature
+                        !=
+                        primarySignature
+                }
+
+
+        // =================================================
+        // 6. Remove duplicate alternatives.
+        //
+        // uniqueRoutesByPath(...) comes from the existing
+        // Section 6 route architecture.
+        // =================================================
+
+        let uniqueAlternatives =
+            uniqueRoutesByPath(
+                nonPrimaryAlternatives
+            )
+
+
+        // =================================================
+        // 7. Sort cheapest first.
+        //
+        // Your generator already sorts them, but doing it
+        // here guarantees preview ordering remains stable
+        // even if the generator changes later.
+        // =================================================
+
+        let sortedAlternatives =
+            uniqueAlternatives
+                .sorted {
+
+                    (
+                        $0.plannedTotalCost
+                        ??
+                        .greatestFiniteMagnitude
+                    )
+                    <
+                    (
+                        $1.plannedTotalCost
+                        ??
+                        .greatestFiniteMagnitude
+                    )
+                }
+
+
+        // =================================================
+        // 8. Respect requested preview limit.
+        //
+        // The generator's own policy may produce more or
+        // fewer routes. This controls only how many routes
+        // we expose in the preview.
+        // =================================================
+
+        let requestedCount =
+            max(
+                0,
+                maximumAlternatives
+            )
+
+
+        let alternatives =
+            Array(
+                sortedAlternatives
+                    .prefix(
+                        requestedCount
+                    )
+            )
+
+
+        // =================================================
+        // 9. Create preview.
+        //
+        // Primary route is selected initially.
+        // =================================================
+
+        let preview =
+            FutureRoutePreview(
+                primaryRoute:
+                    primaryRoute,
+
+                alternativeRoutes:
+                    alternatives,
+
+                selectedRouteID:
+                    primaryRoute.id
+            )
+
+
+        futureRoutePreview =
+            preview
+
+
+        // =================================================
+        // 10. Debug
+        // =================================================
+
+        #if DEBUG
+
+        print("")
+        print("========== FUTURE ROUTE PREVIEW ==========")
+
+        print(
+            "Primary route:",
+            primaryRoute.id
+        )
+
+
+        print(
+            "Primary cost:",
+            primaryRoute.plannedTotalCost
+            as Any
+        )
+
+
+        print(
+            "Generated alternatives:",
+            generatedAlternatives.count
+        )
+
+
+        print(
+            "Preview alternatives:",
+            alternatives.count
+        )
+
+
+        for (
+            index,
+            route
+        ) in alternatives.enumerated() {
+
+            print(
+                """
+                Alternative \(index + 1):
+                  ID: \(route.id)
+                  Cost: \(String(describing: route.plannedTotalCost))
+                  Edges: \(route.orderedUniqueRoadEdgeIDs.count)
+                """
+            )
+        }
+
+
+        print("==========================================")
+        print("")
+
+        #endif
+
+
+        return preview
     }
 
     @discardableResult
@@ -4730,3 +5054,1226 @@ extension GameRoute {
         otherCost
     }
 }
+
+
+#if DEBUG
+
+extension GameStore {
+
+    func debugRouteTestVertices()
+        -> [RoadVertex] {
+
+        // =====================================================
+        // Use one known continuous vertical road.
+        //
+        // Each edge continues directly into the next:
+        //
+        // r05 → r06
+        // r06 → r07
+        // r07 → r08
+        // r08 → r09
+        // r09 → r10
+        //
+        // We use each edge's destination vertex.
+        // =====================================================
+
+        let edgeIDs: [String] = [
+
+            "street.v.c04.r05-06",
+            "street.v.c04.r06-07",
+            "street.v.c04.r07-08",
+            "street.v.c04.r08-09",
+            "street.v.c04.r09-10"
+        ]
+
+
+        var result: [RoadVertex] = []
+
+
+        print("")
+        print("========== DEBUG ROUTE CORRIDOR ==========")
+
+        print(
+            "Current time:",
+            currentDayTime.displayClockString
+        )
+
+
+        for edgeIDString in edgeIDs {
+
+            // =================================================
+            // Find the actual RoadEdge.
+            // =================================================
+
+            guard let edge =
+                roadGraph
+                    .edges
+                    .first(
+                        where: {
+
+                            $0.id.rawValue
+                            ==
+                            edgeIDString
+                        }
+                    )
+            else {
+
+                print(
+                    "❌ Missing debug edge:",
+                    edgeIDString
+                )
+
+                continue
+            }
+
+
+            // =================================================
+            // Use the lower / destination vertex.
+            //
+            // GridRoadGraph's vertical roads are authored
+            // top → bottom, which corresponds to forward time.
+            // =================================================
+
+            guard let vertex =
+                roadGraph
+                    .vertices
+                    .first(
+                        where: {
+
+                            $0.id
+                            ==
+                            edge.toID
+                        }
+                    )
+            else {
+
+                print(
+                    "❌ Missing destination vertex for:",
+                    edgeIDString
+                )
+
+                continue
+            }
+
+
+            // =================================================
+            // Extra safety:
+            // test fixture must remain in the future.
+            // =================================================
+
+            guard
+                vertex
+                    .coordinate
+                    .time
+                    .secondsFromMidnight
+                >
+                currentDayTime
+                    .secondsFromMidnight
+            else {
+
+                print(
+                    "⚠️ Skipping past vertex:",
+                    edgeIDString,
+                    vertex.coordinate.time.displayClockString
+                )
+
+                continue
+            }
+
+
+            result.append(
+                vertex
+            )
+
+
+            print(
+                """
+                ✅ \(edgeIDString)
+                   vertex: \(vertex.id)
+                   time: \(vertex.coordinate.time.displayClockString)
+                   progress: \(vertex.coordinate.progress.percent)
+                """
+            )
+        }
+
+
+        print(
+            "Selected vertices:",
+            result.count
+        )
+
+        print("==========================================")
+        print("")
+
+
+        return result
+    }
+}
+
+#endif
+
+#if DEBUG
+
+extension GameStore {
+
+    func printDebugRouteVertices() {
+
+        let vertices =
+            debugRouteTestVertices()
+
+
+        print("")
+        print("========== ROUTE TEST VERTICES ==========")
+
+
+        for (
+            index,
+            vertex
+        ) in vertices.enumerated() {
+
+            print(
+                """
+                \(index):
+                ID: \(vertex.id)
+                Time: \(vertex.coordinate.time.displayClockString)
+                Progress: \(vertex.coordinate.progress.percent)
+                """
+            )
+        }
+
+
+        print("=========================================")
+        print("")
+    }
+}
+
+#endif
+
+#if DEBUG
+
+private extension GameStore {
+
+    func makeDebugRouteNode(
+        vertex:
+            RoadVertex,
+
+        title:
+            String,
+
+        symbol:
+            String
+    ) -> GameMapNode {
+
+        let activityID =
+            "debug-" +
+            title
+                .lowercased()
+                .replacingOccurrences(
+                    of:
+                        " ",
+                    with:
+                        "-"
+                )
+
+
+        return GameMapNode(
+            id:
+                GameNodeID(),
+
+            placement:
+                .roadVertex(
+                    vertex.id
+                ),
+
+            content:
+                .activity(
+                    ActivityNodeContent(
+                        activityID:
+                            activityID,
+
+                        title:
+                            title,
+
+                        description:
+                            "Debug day-map route fixture",
+
+                        image:
+                            .systemSymbol(
+                                name: symbol
+                            )
+                    )
+                ),
+
+            isEnabled:
+                true
+        )
+    }
+}
+
+#endif
+
+#if DEBUG
+
+extension GameStore {
+
+    @discardableResult
+    func installDebugRouteScenario()
+        -> DebugRouteScenario? {
+
+        // =====================================================
+        // 1. Predictable test time.
+        // =====================================================
+
+        resetSimulationDay(
+            to:
+                DayTime(
+                    secondsFromMidnight:
+                        8
+                        *
+                        3600
+                )
+        )
+
+
+        print("")
+        print("==========================================")
+        print("        INSTALL DEBUG ROUTE FIXTURE")
+        print("==========================================")
+
+        print(
+            "Current game time:",
+            currentDayTime.displayClockString
+        )
+
+
+        // =====================================================
+        // 2. Resolve specifications into real graph vertices.
+        // =====================================================
+
+        var allNodeIDs:
+            [GameNodeID] = []
+
+
+        var routeStopIDs:
+            [GameNodeID] = []
+
+
+        var previousRouteStopTime:
+            TimeInterval?
+
+
+        for spec in
+            debugRouteNodeSpecs {
+
+            guard let vertex =
+                debugDestinationVertex(
+                    forEdgeID:
+                        spec.edgeID
+                )
+            else {
+
+                print(
+                    "❌ Fixture installation aborted."
+                )
+
+                return nil
+            }
+
+
+            let vertexTime =
+                vertex
+                    .coordinate
+                    .time
+                    .secondsFromMidnight
+
+
+            // =================================================
+            // Every fixture node should be in the future.
+            // =================================================
+
+            guard
+                vertexTime
+                >
+                currentDayTime
+                    .secondsFromMidnight
+            else {
+
+                print(
+                    """
+                    ❌ Debug node is not in future.
+                    Title: \(spec.title)
+                    Time: \(vertex.coordinate.time.displayClockString)
+                    """
+                )
+
+                return nil
+            }
+
+
+            // =================================================
+            // Route stops must move forward through time.
+            // =================================================
+
+            if spec.isRouteStop {
+
+                if let previousRouteStopTime {
+
+                    guard
+                        vertexTime
+                        >
+                        previousRouteStopTime
+                    else {
+
+                        print(
+                            """
+                            ❌ Debug route-stop time order invalid.
+                            Stop: \(spec.title)
+                            Time: \(vertex.coordinate.time.displayClockString)
+                            """
+                        )
+
+                        return nil
+                    }
+                }
+
+
+                previousRouteStopTime =
+                    vertexTime
+            }
+
+
+            // =================================================
+            // Create node.
+            // =================================================
+
+            let node =
+                makeDebugRouteNode(
+                    vertex:
+                        vertex,
+
+                    title:
+                        spec.title,
+
+                    symbol:
+                        spec.symbol
+                )
+
+
+            // =================================================
+            // Add using normal GameStore API.
+            // =================================================
+
+            addGameNode(
+                node
+            )
+
+
+            allNodeIDs.append(
+                node.id
+            )
+
+
+            if spec.isRouteStop {
+
+                routeStopIDs.append(
+                    node.id
+                )
+            }
+
+
+            print(
+                """
+                \(spec.isRouteStop ? "🟢 ROUTE STOP" : "⚪ MAP NODE")
+                \(spec.title)
+                Edge: \(spec.edgeID)
+                Time: \(vertex.coordinate.time.displayClockString)
+                Progress: \(vertex.coordinate.progress.percent)
+                """
+            )
+        }
+
+
+        // =====================================================
+        // 3. Verify expected fixture sizes.
+        // =====================================================
+
+        guard
+            allNodeIDs.count
+            ==
+            12
+        else {
+
+            print(
+                "❌ Expected 12 debug nodes; got:",
+                allNodeIDs.count
+            )
+
+            return nil
+        }
+
+
+        guard
+            routeStopIDs.count
+            ==
+            6
+        else {
+
+            print(
+                "❌ Expected 6 route stops; got:",
+                routeStopIDs.count
+            )
+
+            return nil
+        }
+
+
+        // =====================================================
+        // 4. Publish scenario.
+        // =====================================================
+
+        let scenario =
+            DebugRouteScenario(
+                allNodeIDs:
+                    allNodeIDs,
+
+                routeStopNodeIDs:
+                    routeStopIDs
+            )
+
+
+        debugRouteScenario =
+            scenario
+
+
+        print("")
+        print(
+            "✅ Debug route scenario installed."
+        )
+
+        print(
+            "Visible nodes:",
+            scenario.nodeCount
+        )
+
+        print(
+            "Chosen-route waypoints:",
+            scenario.routeStopCount
+        )
+
+        print("==========================================")
+        print("")
+
+
+        return scenario
+    }
+}
+
+#endif
+
+#if DEBUG
+
+extension GameStore {
+
+    func buildDebugChosenRoute() {
+
+        // =====================================================
+        // 1. Require installed fixture.
+        // =====================================================
+
+        guard let scenario =
+            debugRouteScenario
+        else {
+
+            print(
+                "❌ Install debug route scenario first."
+            )
+
+            return
+        }
+
+
+        guard
+            scenario.routeStopNodeIDs.count
+            >=
+            2
+        else {
+
+            print(
+                "❌ Debug scenario has too few route stops."
+            )
+
+            return
+        }
+
+
+        print("")
+        print("==========================================")
+        print("       BUILD DEBUG CHOSEN ROUTE")
+        print("==========================================")
+
+
+        // =====================================================
+        // 2. Start fresh draft.
+        // =====================================================
+
+        beginNewFutureRouteDraft()
+
+
+        // =====================================================
+        // 3. Add route waypoint nodes.
+        //
+        // The other debug nodes remain visible on the map,
+        // but do not constrain route planning.
+        // =====================================================
+
+        for nodeID in
+            scenario.routeStopNodeIDs {
+
+            let added =
+                addStopToFutureRouteDraft(
+                    nodeID
+                )
+
+
+            guard added else {
+
+                print(
+                    "❌ Could not add debug route stop:",
+                    nodeID
+                )
+
+                return
+            }
+        }
+
+
+        print(
+            "Draft stops:",
+            futureRouteDraft
+                .stopNodeIDs
+                .count
+        )
+
+
+        // =====================================================
+        // 4. Plan primary / chosen route.
+        // =====================================================
+
+        let planningResult =
+            planFutureRouteDraft()
+
+
+        guard
+            planningResult.succeeded
+        else {
+
+            print("")
+            print("❌ DEBUG ROUTE PLANNING FAILED")
+
+            print(
+                planningResult
+            )
+
+            print("")
+
+            return
+        }
+
+
+        guard let plannedRoute =
+            planningResult
+                .plannedRoute
+        else {
+
+            print(
+                "❌ Planning succeeded but plannedRoute is nil."
+            )
+
+            return
+        }
+
+
+        guard
+            plannedRoute
+                .isFullyPlanned
+        else {
+
+            print(
+                "❌ Debug route is not fully planned."
+            )
+
+            return
+        }
+
+
+        print("")
+        print("✅ PRIMARY ROUTE PLANNED")
+
+        print(
+            "Route:",
+            plannedRoute.id
+        )
+
+        print(
+            "Edges:",
+            plannedRoute
+                .orderedUniqueRoadEdgeIDs
+                .count
+        )
+
+        print(
+            "Cost:",
+            plannedRoute
+                .plannedTotalCost
+            as Any
+        )
+
+
+        // =====================================================
+        // 5. Generate preview + up to 2 alternatives.
+        //
+        // IMPORTANT:
+        //
+        // Do not inspect FutureRoutePreview.alternatives here.
+        // Your FutureRoutePreview model does not expose such
+        // a property.
+        // =====================================================
+
+        guard
+            generateFutureRoutePreviewAlternatives(
+                maximumAlternatives:
+                    2
+            )
+            != nil
+        else {
+
+            print(
+                "❌ Failed to generate future route preview."
+            )
+
+            return
+        }
+        
+        print("")
+        print(
+            "✅ Future route preview generated."
+        )
+
+
+        // =====================================================
+        // TEST:
+        // Commit the preview into authoritative route state,
+        // THEN remove the temporary preview.
+        //
+        // Expected:
+        //   - chosen route remains visible
+        //   - 2 alternatives remain visible
+        //   - preview geometry disappears
+        //
+        // This lets us compare normal route rendering against
+        // preview rendering.
+        // =====================================================
+
+        let commitResult =
+            commitFutureRoutePreview()
+
+
+        print("")
+        print(
+            "Commit result:",
+            commitResult
+        )
+
+
+        // =====================================================
+        // Clear ONLY the temporary preview after commit.
+        // =====================================================
+
+        futureRoutePreview =
+            nil
+
+
+        print(
+            "🧪 Preview cleared after commit."
+        )
+
+
+        // =====================================================
+        // Verify authoritative routes still exist.
+        // =====================================================
+
+        print("")
+        print("========== POST-COMMIT ROUTE STATE ==========")
+
+        print(
+            "Chosen:",
+            routeState
+                .chosenFutureRoute
+                .id
+        )
+
+        print(
+            "Chosen edges:",
+            routeState
+                .chosenFutureRoute
+                .orderedUniqueRoadEdgeIDs
+                .count
+        )
+
+        print(
+            "Alternatives:",
+            routeState
+                .alternativeRoutes
+                .count
+        )
+
+        for (
+            index,
+            route
+        ) in routeState
+            .alternativeRoutes
+            .enumerated()
+        {
+
+            print(
+                """
+                Alternative \(index + 1)
+                  ID: \(route.id)
+                  Edges: \(route.orderedUniqueRoadEdgeIDs.count)
+                """
+            )
+        }
+
+        print("=============================================")
+        print("")
+
+        // =====================================================
+        // 7. Read ACTUAL stored route state.
+        // =====================================================
+
+        let chosenRoute =
+            routeState
+                .chosenFutureRoute
+
+
+        let alternatives =
+            routeState
+                .alternativeRoutes
+
+
+        print("")
+        print("========== FINAL DEBUG ROUTE STATE ==========")
+
+
+        // =====================================================
+        // Chosen
+        // =====================================================
+
+        print(
+            "Chosen ID:",
+            chosenRoute.id
+        )
+
+
+        print(
+            "Chosen edges:",
+            chosenRoute
+                .orderedUniqueRoadEdgeIDs
+                .count
+        )
+
+
+        print(
+            "Chosen cost:",
+            chosenRoute
+                .plannedTotalCost
+            as Any
+        )
+
+
+        // =====================================================
+        // Alternatives
+        // =====================================================
+
+        print(
+            "Alternative count:",
+            alternatives.count
+        )
+
+
+        for (
+            index,
+            route
+        ) in alternatives.enumerated() {
+
+            print(
+                """
+                Alternative \(index + 1)
+                  ID: \(route.id)
+                  Edges: \(route.orderedUniqueRoadEdgeIDs.count)
+                  Cost: \(String(describing: route.plannedTotalCost))
+                """
+            )
+        }
+
+
+        // =====================================================
+        // 8. Test expectation.
+        // =====================================================
+
+        if alternatives.count >= 2 {
+
+            print("")
+            print(
+                "✅ TEST FIXTURE READY: 1 chosen + at least 2 alternatives."
+            )
+
+        } else {
+
+            print("")
+            print(
+                """
+                ⚠️ TEST FIXTURE GENERATED ONLY \(alternatives.count) ALTERNATIVE(S).
+
+                The chosen route is valid, but AlternativeRouteGenerator
+                did not find two sufficiently different valid paths.
+                """
+            )
+        }
+
+
+        print("============================================")
+        print("")
+    }
+}
+
+#endif
+
+#if DEBUG
+
+extension GameStore {
+
+    func printDebugRouteState() {
+
+        print("")
+        print("========== ROUTE STATE ==========")
+
+        print(
+            "Completed segments:",
+            routeState
+                .completedRoute
+                .segments
+                .count
+        )
+
+
+        print(
+            "Chosen:",
+            routeState
+                .chosenFutureRoute
+                .id
+        )
+
+
+        print(
+            "Alternatives:",
+            routeState
+                .alternativeRoutes
+                .count
+        )
+
+
+        if let preview =
+            futureRoutePreview
+        {
+
+            print(
+                "Preview selected:",
+                preview.selectedRouteID
+            )
+
+
+            print(
+                "Preview alternatives:",
+                preview.alternativeRoutes.count
+            )
+        }
+
+
+        print("=================================")
+        print("")
+    }
+    
+}
+
+#endif
+
+#if DEBUG
+
+private struct DebugRouteNodeSpec {
+
+    let edgeID:
+        String
+
+    let title:
+        String
+
+    let symbol:
+        String
+
+    let isRouteStop:
+        Bool
+}
+
+#endif
+
+#if DEBUG
+
+private extension GameStore {
+
+    var debugRouteNodeSpecs:
+        [DebugRouteNodeSpec] {
+
+        [
+
+            // =================================================
+            // DESTINATION ROW 6 — 9:00 AM
+            // =================================================
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c01.r05-06",
+                title:
+                    "Morning Walk",
+                symbol:
+                    "figure.walk",
+                isRouteStop:
+                    true
+            ),
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c04.r05-06",
+                title:
+                    "Coffee Stop",
+                symbol:
+                    "cup.and.saucer.fill",
+                isRouteStop:
+                    false
+            ),
+
+
+            // =================================================
+            // DESTINATION ROW 7 — 10:30 AM
+            // =================================================
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c05.r06-07",
+                title:
+                    "Breakfast",
+                symbol:
+                    "fork.knife",
+                isRouteStop:
+                    false
+            ),
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c07.r06-07",
+                title:
+                    "Gym",
+                symbol:
+                    "figure.strengthtraining.traditional",
+                isRouteStop:
+                    true
+            ),
+
+
+            // =================================================
+            // DESTINATION ROW 8 — 12:00 PM
+            // =================================================
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c02.r07-08",
+                title:
+                    "Lunch",
+                symbol:
+                    "takeoutbag.and.cup.and.straw.fill",
+                isRouteStop:
+                    true
+            ),
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c05.r07-08",
+                title:
+                    "Park",
+                symbol:
+                    "tree.fill",
+                isRouteStop:
+                    false
+            ),
+
+
+            // =================================================
+            // DESTINATION ROW 9 — 1:30 PM
+            // =================================================
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c04.r08-09",
+                title:
+                    "Coffee Break",
+                symbol:
+                    "mug.fill",
+                isRouteStop:
+                    false
+            ),
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c08.r08-09",
+                title:
+                    "Work Session",
+                symbol:
+                    "briefcase.fill",
+                isRouteStop:
+                    true
+            ),
+
+
+            // =================================================
+            // DESTINATION ROW 10 — 3:00 PM
+            // =================================================
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c03.r09-10",
+                title:
+                    "Evening Run",
+                symbol:
+                    "figure.run",
+                isRouteStop:
+                    true
+            ),
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c06.r09-10",
+                title:
+                    "Grocery Stop",
+                symbol:
+                    "cart.fill",
+                isRouteStop:
+                    false
+            ),
+
+
+            // =================================================
+            // DESTINATION ROW 11 — 4:30 PM
+            // =================================================
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c05.r10-11",
+                title:
+                    "Friend Meetup",
+                symbol:
+                    "person.2.fill",
+                isRouteStop:
+                    false
+            ),
+
+            DebugRouteNodeSpec(
+                edgeID:
+                    "street.v.c07.r10-11",
+                title:
+                    "Dinner",
+                symbol:
+                    "fork.knife.circle.fill",
+                isRouteStop:
+                    true
+            )
+        ]
+    }
+}
+
+#endif
+
+#if DEBUG
+
+private extension GameStore {
+
+    func debugDestinationVertex(
+        forEdgeID edgeID:
+            String
+    ) -> RoadVertex? {
+
+        // =====================================================
+        // Find road edge.
+        // =====================================================
+
+        guard let edge =
+            roadGraph
+                .edges
+                .first(
+                    where: {
+
+                        $0.id.rawValue
+                        ==
+                        edgeID
+                    }
+                )
+        else {
+
+            print(
+                "❌ Debug edge does not exist:",
+                edgeID
+            )
+
+            return nil
+        }
+
+
+        // =====================================================
+        // Get its destination vertex.
+        //
+        // For:
+        //
+        // street.v.c01.r03-04
+        //
+        // this gives us the intersection at row 04.
+        // =====================================================
+
+        guard let vertex =
+            roadGraph
+                .vertices
+                .first(
+                    where: {
+
+                        $0.id
+                        ==
+                        edge.toID
+                    }
+                )
+        else {
+
+            print(
+                "❌ Destination vertex missing for:",
+                edgeID
+            )
+
+            return nil
+        }
+
+
+        return vertex
+    }
+}
+
+#endif
+
+
+

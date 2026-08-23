@@ -2,18 +2,15 @@
 //  RouteHitTester.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/22/26.
 //
+
 
 import Foundation
 import CoreGraphics
 
 
 struct RouteHitTester {
-
-    // =====================================================
-    // MARK: - Hit
-    // =====================================================
 
     private struct Candidate {
 
@@ -33,59 +30,84 @@ struct RouteHitTester {
     // =====================================================
 
     func hitTest(
-        at point:
-            CGPoint,
-        state:
-            RouteRenderState,
-        graph:
-            RoadGraph,
-        tolerance:
-            CGFloat
+        at point: CGPoint,
+        state: RouteRenderState,
+        graph: RoadGraph,
+        tolerance: CGFloat
     ) -> RouteInteractionTarget? {
 
-        var candidates:
-            [Candidate] = []
+        var candidates: [Candidate] = []
 
 
         // =================================================
-        // Chosen Route
-        //
-        // Highest route priority.
+        // Shared Completed -> Chosen curved state boundary
         // =================================================
 
-        if let chosen =
-            state.chosenFuture,
-           let distance =
-            minimumDistance(
-                from:
-                    point,
-                to:
-                    chosen.segments,
-                graph:
-                    graph
-            ),
-           distance <=
-            tolerance
-        {
+        let boundaryTransition:
+            RoutePathBuilder.BoundaryTransitionPaths?
 
-            candidates.append(
-                Candidate(
-                    target:
-                        .chosen(
-                            routeID:
-                                chosen.routeID
-                        ),
-                    distance:
-                        distance,
-                    priority:
-                        0
-                )
-            )
+        if let chosen = state.chosenFuture {
+
+            boundaryTransition =
+                RoutePathBuilder
+                    .makeBoundaryTransitionPaths(
+                        completedSegments:
+                            state.completedSegments,
+                        chosenSegments:
+                            chosen.segments,
+                        graph:
+                            graph
+                    )
+
+        } else {
+
+            boundaryTransition = nil
         }
 
 
         // =================================================
-        // Alternatives
+        // 1. Chosen Route — highest route priority
+        // =================================================
+
+        if let chosen = state.chosenFuture {
+
+            let distance =
+                visualDistance(
+                    from: point,
+                    segments: chosen.segments,
+                    pathOverride:
+                        boundaryTransition?
+                            .chosenPath,
+                    graph: graph
+                )
+
+            if
+                let distance,
+                distance <=
+                    tolerance
+                    + RouteVisualTheme
+                        .chosenHaloWidth
+                        / 2
+            {
+                candidates.append(
+                    Candidate(
+                        target:
+                            .chosen(
+                                routeID:
+                                    chosen.routeID
+                            ),
+                        distance:
+                            distance,
+                        priority:
+                            0
+                    )
+                )
+            }
+        }
+
+
+        // =================================================
+        // 2. Alternatives
         // =================================================
 
         for (
@@ -94,21 +116,23 @@ struct RouteHitTester {
         ) in state.alternatives.enumerated() {
 
             guard let distance =
-                minimumDistance(
-                    from:
-                        point,
-                    to:
+                visualDistance(
+                    from: point,
+                    segments:
                         alternative.segments,
+                    pathOverride:
+                        nil,
                     graph:
                         graph
                 ),
-                  distance <=
+                distance <=
                     tolerance
+                    + RouteVisualTheme
+                        .alternativeWidth
+                        / 2
             else {
-
                 continue
             }
-
 
             candidates.append(
                 Candidate(
@@ -127,28 +151,35 @@ struct RouteHitTester {
 
 
         // =================================================
-        // Completed Route
+        // 3. Completed Route
         // =================================================
 
-        if let distance =
-            minimumDistance(
-                from:
-                    point,
-                to:
+        let completedDistance =
+            visualDistance(
+                from: point,
+                segments:
                     state.completedSegments,
+                pathOverride:
+                    boundaryTransition?
+                        .completedPath,
                 graph:
                     graph
-            ),
-           distance <=
-            tolerance
-        {
+            )
 
+        if
+            let completedDistance,
+            completedDistance <=
+                tolerance
+                + RouteVisualTheme
+                    .completedHaloWidth
+                    / 2
+        {
             candidates.append(
                 Candidate(
                     target:
                         .completed,
                     distance:
-                        distance,
+                        completedDistance,
                     priority:
                         100
                 )
@@ -166,212 +197,45 @@ struct RouteHitTester {
                 let delta =
                     abs(
                         lhs.distance
-                        -
-                        rhs.distance
+                        - rhs.distance
                     )
 
-
-                /*
-                 If two routes occupy effectively the
-                 same line, visual priority wins.
-
-                 Chosen > Alternative > Completed
-                 */
-
-                if delta <
-                    0.5
-                {
-
-                    return lhs.priority <
-                        rhs.priority
+                // If centerlines are effectively the same, preserve the
+                // visual interaction priority: Chosen > Alternate > Completed.
+                if delta < 0.5 {
+                    return lhs.priority < rhs.priority
                 }
 
-
-                return lhs.distance <
-                    rhs.distance
+                return lhs.distance < rhs.distance
             }?
             .target
     }
 }
 
+
 private extension RouteHitTester {
 
-    func minimumDistance(
-        from point:
-            CGPoint,
-        to segments:
-            [RoadRouteSegment],
-        graph:
-            RoadGraph
+    func visualDistance(
+        from point: CGPoint,
+        segments: [RoadRouteSegment],
+        pathOverride: CGPath?,
+        graph: RoadGraph
     ) -> CGFloat? {
 
-        guard
-            !segments.isEmpty
-        else {
+        if let pathOverride {
 
-            return nil
-        }
-
-
-        var bestDistance =
-            CGFloat.greatestFiniteMagnitude
-
-
-        for segment in
-            segments {
-
-            let points =
-                RoadEdgeGeometry
-                    .sampledPoints(
-                        along:
-                            segment,
-                        graph:
-                            graph,
-                        cubicSegments:
-                            72
-                    )
-
-
-            guard
-                points.count >= 2
-            else {
-
-                continue
-            }
-
-
-            for (
-                first,
-                second
-            ) in zip(
-                points,
-                points.dropFirst()
-            ) {
-
-                let distance =
-                    distance(
-                        from:
-                            point,
-                        toSegmentFrom:
-                            first.cgPoint,
-                        to:
-                            second.cgPoint
-                    )
-
-
-                bestDistance =
-                    min(
-                        bestDistance,
-                        distance
-                    )
-            }
-        }
-
-
-        guard
-            bestDistance !=
-                .greatestFiniteMagnitude
-        else {
-
-            return nil
-        }
-
-
-        return bestDistance
-    }
-}
-
-private extension RouteHitTester {
-
-    func distance(
-        from point:
-            CGPoint,
-        toSegmentFrom start:
-            CGPoint,
-        to end:
-            CGPoint
-    ) -> CGFloat {
-
-        let dx =
-            end.x -
-            start.x
-
-
-        let dy =
-            end.y -
-            start.y
-
-
-        let lengthSquared =
-            dx * dx
-            +
-            dy * dy
-
-
-        guard
-            lengthSquared >
-                0.000_001
-        else {
-
-            return hypot(
-                point.x -
-                start.x,
-                point.y -
-                start.y
-            )
-        }
-
-
-        let rawT =
-            (
-                (
-                    point.x -
-                    start.x
+            return RoutePathBuilder
+                .minimumVisualDistance(
+                    from: point,
+                    to: pathOverride
                 )
-                *
-                dx
+        }
 
-                +
-
-                (
-                    point.y -
-                    start.y
-                )
-                *
-                dy
+        return RoutePathBuilder
+            .minimumVisualDistance(
+                from: point,
+                to: segments,
+                graph: graph
             )
-            /
-            lengthSquared
-
-
-        let t =
-            min(
-                max(
-                    rawT,
-                    0
-                ),
-                1
-            )
-
-
-        let projection =
-            CGPoint(
-                x:
-                    start.x
-                    +
-                    dx * t,
-                y:
-                    start.y
-                    +
-                    dy * t
-            )
-
-
-        return hypot(
-            point.x -
-            projection.x,
-            point.y -
-            projection.y
-        )
     }
 }

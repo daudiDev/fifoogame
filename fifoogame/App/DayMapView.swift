@@ -2,8 +2,9 @@
 //  DayMapView.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/18/26.
+//  Created by Daudi Sagala on 8/22/26.
 //
+
 
 import SwiftUI
 import SpriteKit
@@ -100,60 +101,15 @@ struct DayMapView: View {
                 
                 AppOverLayView(isShowingAddNode: $isShowingAddNode)
                 
+//                VStack {
+//                    topDiagnosticHUD
+//                    Spacer()
+//                }
                 
-                // MARK: SwiftUI Diagnostic UI
-                
-                VStack(
-                    spacing: 12
-                ) {
-                    
-                    // topDiagnosticHUD
-                    
-                    
-                    Spacer()
-                    
-                    
-//                    if
-//                        let nodeID =
-//                            store.selection
-//                            .selectedNodeID,
-//                        
-//                            let gameNode =
-//                            store.gameNode(
-//                                id:
-//                                    nodeID
-//                            )
-//                    {
-//                        
-//                        GameNodeInspectorHUD(
-//                            node:
-//                                gameNode
-//                        )
-//                        
-//                        
-//                    } else if hasRoadSelection {
-//                        
-//                        RoadInspectorHUD(
-//                            graph:
-//                                store.roadGraph,
-//                            selection:
-//                                store.selection
-//                        )
-//                    }
-                    
-                    
-                    /*
-                     This HUD is primarily useful
-                     when empty map/background space
-                     is tapped.
-                     */
-                    
-                    //                bottomDiagnosticHUD
-                }
-                .padding()
                 
 
             } //zs
+
         } //nav
         .sheet(
             isPresented:
@@ -210,20 +166,26 @@ struct DayMapView: View {
                 store.selection
             )
             
-            scene.renderRoutes(
-                store.routeRenderState
+            syncRouteLayers()
+            
+            store.useSimulatedClock(
+                speed: 60
+            )
+
+            store.resetSimulationDay(
+                to:
+                    DayTime(
+                        secondsFromMidnight:
+                            8 * 3600
+                    )
             )
             
-            print("Chosen empty:", store.routeState.chosenFutureRoute.isEmpty)
-            print("Chosen planned:", store.routeState.chosenFutureRoute.isFullyPlanned)
-            print("Chosen segments:",
-                  store.routeRenderState.chosenFuture?.segments.count ?? 0)
-
-            print("Alternatives:",
-                  store.routeRenderState.alternatives.count)
-
-            print("Completed:",
-                  store.routeRenderState.completedSegments.count)
+            //MARK: todo - remove for production
+            store.printDebugRouteVertices()
+            
+            store.installDebugRouteScenario()
+//            store.buildDebugChosenRoute()
+       
 
         }
 
@@ -300,19 +262,7 @@ struct DayMapView: View {
                 store.routeState
         ) { _, _ in
 
-            scene.renderRoutes(
-                store.routeRenderState
-            )
-        }
-        
-        .onChange(
-            of:
-                store.currentDayTime
-        ) { _, _ in
-
-            scene.renderRoutes(
-                store.routeRenderState
-            )
+            syncRouteLayers()
         }
         
         .onChange(
@@ -518,8 +468,23 @@ private extension DayMapView {
                     spacing:
                         3
                 ) {
+                    
+                    Button(
+                        "Install Test Data"
+                    ) {
 
-                   routeControl
+                        store.installDebugRouteScenario()
+                    }
+
+
+                    Button(
+                        "Build + Commit Test Route"
+                    ) {
+
+                        store.buildDebugChosenRoute()
+                    }
+
+//                   routeControl
   
                 }
 
@@ -1067,24 +1032,11 @@ private extension DayMapView {
             FutureRoutePreview?
     ) {
 
-        guard
-            newPreview != nil
-        else {
-
-            scene.clearRoutePreview()
-
-            return
-        }
-
-
-        let renderState:
-            RoutePreviewRenderState =
-                store.routePreviewRenderState
-
-
-        scene.renderRoutePreview(
-            renderState
-        )
+        // Keep preview and live route layers synchronized through selection,
+        // replanning, cancellation and commit. A successful commit publishes
+        // routeState and then clears futureRoutePreview; this helper is safe
+        // regardless of which SwiftUI observation fires first.
+        syncRouteLayers()
     }
 }
 
@@ -1172,6 +1124,32 @@ private extension DayMapView {
 
 private extension DayMapView {
 
+    /// Synchronizes the live and temporary route layers as one visual unit.
+    /// This is deliberately idempotent so route commits can publish several
+    /// store properties without briefly leaving stale preview geometry behind.
+    func syncRouteLayers() {
+
+        scene.renderRoutes(
+            store.routeRenderState
+        )
+
+
+        if store.futureRoutePreview != nil {
+
+            scene.renderRoutePreview(
+                store.routePreviewRenderState
+            )
+
+        } else {
+
+            scene.clearRoutePreview()
+        }
+    }
+}
+
+
+private extension DayMapView {
+
     func currentDayTimeDidChange(
         _ oldTime:
             DayTime,
@@ -1185,28 +1163,9 @@ private extension DayMapView {
         )
 
 
-        // Completed route grows and chosen future shrinks.
-        let routeState:
-            RouteRenderState =
-                store.routeRenderState
-
-
-        scene.renderRoutes(
-            routeState
-        )
-
-
-        // Keep an active editor preview synchronized
-        // with the same current time.
-        if
-            store.futureRoutePreview
-            != nil
-        {
-
-            scene.renderRoutePreview(
-                store.routePreviewRenderState
-            )
-        }
+        // Completed route grows, chosen future shrinks, and any active
+        // preview is clipped from this same current-time boundary.
+        syncRouteLayers()
     }
 
 
