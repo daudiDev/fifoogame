@@ -8,6 +8,7 @@
 import Foundation
 import Observation
 import SocketIO
+import Combine
 
 
 // MARK: - Application Socket Manager
@@ -19,6 +20,9 @@ final class SocketManager {
     // MARK: - Singleton
 
     static let shared = SocketManager()
+    
+    //MARK: tdo - update to computed value
+    var userDailyProgress = 0.38
 
 
     // MARK: - Socket Event Names
@@ -70,6 +74,8 @@ final class SocketManager {
 
     /// Live reactions/hearts/emojis.
     var liveReactions: [WorkoutLiveReaction] = []
+    
+    var isShowingPlay: Bool = false
 
 
     // MARK: - Connection State

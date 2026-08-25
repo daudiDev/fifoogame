@@ -12,18 +12,17 @@ struct WorkoutStatusOverlay: View {
     private let session = WorkoutSessionManager.shared
     @State private var showProgressView: Bool = false
     @Binding var showWorkoutStatusOverlay: Bool
-    @Binding var isShowingPlay: Bool
     
     var body: some View {
         
         VStack {
             
             if (session.workout.status == .completed) {
-                WorkoutCompleted(geometry: geometry, session: session, showProgressView: $showProgressView, isShowingPlay: $isShowingPlay)
+                WorkoutCompleted(geometry: geometry, session: session, showProgressView: $showProgressView)
             } else if (session.workout.status == .notStarted) {
-                WorkoutWelcome(geometry: geometry, session: session, showWorkoutStatusOverlay: $showWorkoutStatusOverlay, isShowingPlay: $isShowingPlay)
+                WorkoutWelcome(geometry: geometry, session: session, showWorkoutStatusOverlay: $showWorkoutStatusOverlay)
             } else if (session.workout.status == .paused) {
-                WorkoutResumeView(geometry: geometry, session: session, showWorkoutStatusOverlay: $showWorkoutStatusOverlay, isShowingPlay: $isShowingPlay)
+                WorkoutResumeView(geometry: geometry, session: session, showWorkoutStatusOverlay: $showWorkoutStatusOverlay)
             }
 
         }
@@ -39,10 +38,10 @@ struct WorkoutStatusOverlay: View {
 
 //MARK: Welcome
 struct WorkoutWelcome: View {
+    private let socketManager = SocketManager.shared
     var geometry: GeometryProxy
     var session: WorkoutSessionManager
     @Binding var showWorkoutStatusOverlay: Bool
-    @Binding var isShowingPlay: Bool
     
     var body: some View {
     
@@ -53,7 +52,7 @@ struct WorkoutWelcome: View {
                 Button {
 
                     //MARK: todo exit
-                    isShowingPlay = false
+                    socketManager.isShowingPlay = false
                     
                    
                 } label: {
@@ -116,10 +115,10 @@ struct WorkoutWelcome: View {
 
 //MARK: Paused Status
 struct WorkoutResumeView: View {
+    private let socketManager = SocketManager.shared
     var geometry: GeometryProxy
     var session: WorkoutSessionManager
     @Binding var showWorkoutStatusOverlay: Bool
-    @Binding var isShowingPlay: Bool
     
     var body: some View {
     
@@ -131,7 +130,7 @@ struct WorkoutResumeView: View {
 
                     //MARK: todo exit
                     
-                    isShowingPlay = false
+                    socketManager.isShowingPlay = false
                     
                    
                 } label: {
@@ -194,10 +193,10 @@ struct WorkoutResumeView: View {
 
 //MARK: completed Status
 struct WorkoutCompleted: View {
+    private let socketManager = SocketManager.shared
     var geometry: GeometryProxy
     var session: WorkoutSessionManager
     @Binding var showProgressView: Bool
-    @Binding var isShowingPlay: Bool
     
     var body: some View {
     
@@ -208,7 +207,7 @@ struct WorkoutCompleted: View {
                 Button {
 
                     //MARK: todo exit
-                  isShowingPlay = false
+                    socketManager.isShowingPlay = false
                    
                 } label: {
                     HStack(alignment: .center, spacing: 4) {

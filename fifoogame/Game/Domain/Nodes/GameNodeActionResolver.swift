@@ -2,7 +2,7 @@
 //  GameNodeActionResolver.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
 
 
@@ -19,12 +19,12 @@ enum GameNodeActionResolver {
         switch node.content {
 
         // =========================================
-        // Label
+        // Play
         // =========================================
 
-        case .label:
+        case .play:
 
-            return .showLabel(
+            return .showPlay(
                 nodeID:
                     node.id
             )

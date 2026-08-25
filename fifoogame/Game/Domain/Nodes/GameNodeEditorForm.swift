@@ -2,13 +2,15 @@
 //  GameNodeEditorForm.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
+
 
 
 
 import SwiftUI
 import Foundation
+import UIKit
 
 struct GameNodeEditorForm: View {
 
@@ -30,21 +32,63 @@ struct GameNodeEditorForm: View {
 
         Form {
 
-            validationSection
+            if isActivityNode {
 
-            identitySection
+                activityTitleSection
 
-            contentSection
+                activityScheduleSection
 
-            imageSection
+                activityTypeSection
 
-            placementSection
+                activityDetailsSection
 
-            roadRelationshipSection
+                activityStatusSection
 
-            statusSection
+            } else if isUserNode {
+
+                validationSection
+
+                userProfileSection
+
+                userGoalProgressSection
+
+                userCommunitySection
+
+                userRecognitionSection
+
+                userAccountActivitySection
+
+                userMapTimeSection
+
+            } else if isPostNode {
+
+                postTypeSection
+
+                postSubjectSection
+
+                postImagesSection
+
+                postVideosSection
+
+            } else {
+
+                validationSection
+
+                identitySection
+
+                contentSection
+
+                timeSection
+
+                imageSection
+
+                placementSection
+
+                roadRelationshipSection
+
+                statusSection
+            }
         }
-        
     }
 }
 
@@ -177,15 +221,15 @@ private extension GameNodeEditorForm {
             switch node.content {
 
             // =========================================
-            // Label
+            // Play
             // =========================================
 
-            case .label:
+            case .play:
 
                 TextField(
-                    "Text",
+                    "Title",
                     text:
-                        labelTextBinding
+                        playTitleBinding
                 )
 
 
@@ -255,22 +299,9 @@ private extension GameNodeEditorForm {
 
             case .post:
 
-                TextField(
-                    "Title",
-                    text:
-                        postTitleBinding
-                )
-
-
-                TextField(
-                    "Post ID",
-                    text:
-                        postIDBinding
-                )
-                .textInputAutocapitalization(
-                    .never
-                )
-                .autocorrectionDisabled()
+                // Post nodes use their own intentionally minimal creation
+                // form in `body`: Post Type, Subject, Images, and Videos.
+                EmptyView()
 
 
             // =========================================
@@ -367,6 +398,1506 @@ private extension GameNodeEditorForm {
 }
 
 // =====================================================
+// MARK: - Post Creation Form
+// =====================================================
+
+private extension GameNodeEditorForm {
+
+    var isPostNode: Bool {
+
+        if case .post = node.content {
+            return true
+        }
+
+        return false
+    }
+
+
+    var postTypeSection: some View {
+
+        Section(
+            "Post Type"
+        ) {
+
+            LabeledContent(
+                "Type",
+                value:
+                    currentPostSnapshot?
+                        .postTypeDisplayName
+                    ?? "Post"
+            )
+        }
+    }
+
+
+    var postSubjectSection: some View {
+
+        Section(
+            "Subject"
+        ) {
+
+            TextField(
+                "Subject",
+                text:
+                    postSubjectBinding,
+                axis:
+                    .vertical
+            )
+            .lineLimit(
+                2...8
+            )
+        }
+    }
+
+
+    var postImagesSection: some View {
+
+        Section(
+            "Images"
+        ) {
+
+            TextField(
+                "Image URLs",
+                text:
+                    postImageURLsBinding,
+                axis:
+                    .vertical
+            )
+            .lineLimit(
+                2...8
+            )
+            .textInputAutocapitalization(
+                .never
+            )
+            .keyboardType(
+                .URL
+            )
+            .autocorrectionDisabled()
+        }
+    }
+
+
+    var postVideosSection: some View {
+
+        Section(
+            "Videos"
+        ) {
+
+            TextField(
+                "Video URLs",
+                text:
+                    postVideoURLsBinding,
+                axis:
+                    .vertical
+            )
+            .lineLimit(
+                2...8
+            )
+            .textInputAutocapitalization(
+                .never
+            )
+            .keyboardType(
+                .URL
+            )
+            .autocorrectionDisabled()
+        }
+    }
+
+
+    var currentPostSnapshot:
+        PostNodeSnapshot? {
+
+        guard case let .post(
+            content
+        ) = node.content
+        else {
+            return nil
+        }
+
+        return content.snapshot
+    }
+}
+
+
+// =====================================================
+// MARK: - User Editor
+// =====================================================
+
+private extension GameNodeEditorForm {
+
+    var isUserNode: Bool {
+
+        if case .user = node.content {
+            return true
+        }
+
+        return false
+    }
+
+
+    var userProfileSection: some View {
+
+        Section(
+            "Profile"
+        ) {
+
+            nodeImagePreview
+
+
+            if let profile =
+                currentUserProfile {
+
+                LabeledContent(
+                    "Name",
+                    value:
+                        profile.preferredDisplayName
+                )
+
+
+                if !profile.username
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    LabeledContent(
+                        "Username",
+                        value:
+                            profile.username.hasPrefix("@")
+                            ? profile.username
+                            : "@\(profile.username)"
+                    )
+                }
+
+
+                if !profile.phone
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    LabeledContent(
+                        "Phone",
+                        value:
+                            profile.phone
+                    )
+                }
+
+
+                LabeledContent(
+                    "User ID"
+                ) {
+
+                    Text(
+                        profile.userID
+                    )
+                    .font(
+                        .caption.monospaced()
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                    .textSelection(
+                        .enabled
+                    )
+                }
+
+            } else {
+
+                LabeledContent(
+                    "Name",
+                    value:
+                        currentUserContent?.displayName
+                        ?? "User"
+                )
+
+                LabeledContent(
+                    "User ID"
+                ) {
+
+                    Text(
+                        currentUserContent?.userID
+                        ?? ""
+                    )
+                    .font(
+                        .caption.monospaced()
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+
+                Text(
+                    "No profile snapshot is stored on this user node yet."
+                )
+                .font(
+                    .caption
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+        }
+    }
+
+
+    var userGoalProgressSection: some View {
+
+        Section(
+            "Goal & Progress"
+        ) {
+
+            if let profile =
+                currentUserProfile {
+
+                if !profile.goal
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: 6
+                    ) {
+
+                        Text(
+                            "Goal"
+                        )
+                        .font(
+                            .caption
+                        )
+                        .foregroundStyle(
+                            .secondary
+                        )
+
+                        Text(
+                            profile.goal
+                        )
+                    }
+                }
+
+
+                VStack(
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+
+                    HStack {
+
+                        Text(
+                            "Progress"
+                        )
+
+                        Spacer()
+
+                        Text(
+                            "\(profile.progressPercent)%"
+                        )
+                        .fontWeight(
+                            .semibold
+                        )
+                        .monospacedDigit()
+                    }
+
+                    ProgressView(
+                        value:
+                            profile.progressFraction
+                    )
+                }
+
+            } else {
+
+                Text(
+                    "Progress is unavailable until a profile snapshot is attached."
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+        }
+    }
+
+
+    var userCommunitySection: some View {
+
+        Section(
+            "Community"
+        ) {
+
+            if let profile =
+                currentUserProfile {
+
+                LabeledContent(
+                    "Followers",
+                    value:
+                        "\(profile.inFollowersCount)"
+                )
+
+                LabeledContent(
+                    "Following",
+                    value:
+                        "\(profile.outFollowersCount)"
+                )
+
+                LabeledContent(
+                    "Tips",
+                    value:
+                        "\(profile.tipsCount)"
+                )
+
+                LabeledContent(
+                    "Responses",
+                    value:
+                        "\(profile.responseCount)"
+                )
+
+                LabeledContent(
+                    "Requests",
+                    value:
+                        "\(profile.requestCount)"
+                )
+
+            } else {
+
+                Text(
+                    "Community statistics are unavailable."
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+        }
+    }
+
+
+    @ViewBuilder
+    var userRecognitionSection: some View {
+
+        if let profile =
+            currentUserProfile {
+
+            let badges =
+                userRecognitionBadges(
+                    profile
+                )
+
+            Section(
+                "Recognition"
+            ) {
+
+                if badges.isEmpty {
+
+                    Text(
+                        "No recognition badges yet."
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+
+                } else {
+
+                    ForEach(
+                        badges,
+                        id: \.self
+                    ) { badge in
+
+                        Text(
+                            badge
+                        )
+                        .fontWeight(
+                            .semibold
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+
+    var userAccountActivitySection: some View {
+
+        Section(
+            "Account Activity"
+        ) {
+
+            if let profile =
+                currentUserProfile {
+
+                if !profile.joined
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    LabeledContent(
+                        "Joined",
+                        value:
+                            profile.joined
+                    )
+                }
+
+
+                if !profile.lastActive
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    LabeledContent(
+                        "Last Active",
+                        value:
+                            profile.lastActive
+                    )
+                }
+
+            } else {
+
+                Text(
+                    "Account activity is unavailable."
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+        }
+    }
+
+
+    var userMapTimeSection: some View {
+
+        Section(
+            "Map Time"
+        ) {
+
+            DatePicker(
+                "Time",
+                selection:
+                    nodeTimeBinding,
+                displayedComponents:
+                    .hourAndMinute
+            )
+            .disabled(
+                isRoadVertexPlacement
+            )
+
+
+            if isRoadVertexPlacement {
+
+                Text(
+                    "This user node is attached to a road intersection, so its map time follows that intersection."
+                )
+                .font(
+                    .caption
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+        }
+    }
+
+
+    var currentUserContent:
+        UserNodeContent? {
+
+        guard case let .user(
+            content
+        ) = node.content
+        else {
+            return nil
+        }
+
+        return content
+    }
+
+
+    var currentUserProfile:
+        UserProfileNodeSnapshot? {
+
+        currentUserContent?.profile
+    }
+
+
+    func userRecognitionBadges(
+        _ profile:
+            UserProfileNodeSnapshot
+    ) -> [String] {
+
+        var badges: [String] = []
+
+        if profile.topTipster {
+            badges.append("Top Tipster")
+        }
+
+        if profile.topRequester {
+            badges.append("Top Requester")
+        }
+
+        if profile.topResponder {
+            badges.append("Top Responder")
+        }
+
+        if profile.topContributor {
+            badges.append("Top Contributor")
+        }
+
+        return badges
+    }
+}
+
+
+// =====================================================
+// MARK: - Activity Editor
+// =====================================================
+
+private extension GameNodeEditorForm {
+
+    var isActivityNode: Bool {
+
+        if case .activity = node.content {
+            return true
+        }
+
+        return false
+    }
+
+
+    /// Activity's first section is intentionally limited to the content a
+    /// user needs to identify the activity at a glance: its title and, when
+    /// supplied by the Activity model, its image.
+    var activityTitleSection: some View {
+
+        Section(
+            "Title"
+        ) {
+
+            TextField(
+                "Title",
+                text:
+                    activityTitleBinding
+            )
+
+
+            if currentImage != nil {
+
+                nodeImagePreview
+            }
+        }
+    }
+
+
+    var activityScheduleSection: some View {
+
+        Section(
+            "Schedule"
+        ) {
+
+            TextField(
+                "Date",
+                text:
+                    activityDateBinding
+            )
+            .textInputAutocapitalization(
+                .never
+            )
+            .autocorrectionDisabled()
+
+
+            DatePicker(
+                "Start Time",
+                selection:
+                    activityStartTimeBinding,
+                displayedComponents:
+                    .hourAndMinute
+            )
+
+
+            DatePicker(
+                "End Time",
+                selection:
+                    activityEndTimeBinding,
+                displayedComponents:
+                    .hourAndMinute
+            )
+
+
+            Text(
+                "Changing Start Time also moves this node to that time on the day map. If the node was attached to a road intersection, it becomes a free-position node at the same progress instead of being silently snapped to another road."
+            )
+            .font(
+                .caption
+            )
+            .foregroundStyle(
+                .secondary
+            )
+        }
+    }
+
+
+    /// Activity type is intentionally read-only on the Activity screen. It
+    /// summarizes the underlying SuggestedMeal / Workout / UserTask and links
+    /// to a dedicated editor for that object.
+    var activityTypeSection: some View {
+
+        Section(
+            "Activity Type"
+        ) {
+
+            LabeledContent(
+                "Type"
+            ) {
+
+                Text(
+                    activityTypeEditorDisplayName
+                )
+                .fontWeight(
+                    .semibold
+                )
+            }
+
+
+            activityTypeSummary
+
+
+            NavigationLink {
+
+                ActivityTypeEditorView(
+                    node:
+                        $node
+                )
+
+            } label: {
+
+                Text(
+                    "Edit \(activityTypeEditorDisplayName)"
+                )
+                .fontWeight(
+                    .semibold
+                )
+            }
+        }
+    }
+
+
+    @ViewBuilder
+    var activityTypeSummary: some View {
+
+        if case let .activity(
+            content
+        ) = node.content {
+
+            switch content.resolvedActivityType {
+
+        case .meal:
+
+            if let meal =
+                content.meal {
+
+                LabeledContent(
+                    "Meal",
+                    value:
+                        meal.title
+                )
+
+                LabeledContent(
+                    "Estimated Time",
+                    value:
+                        "\(meal.estimatedTimeMinutes) min"
+                )
+
+                if !meal.priceRange
+                    .trimmingCharacters(
+                        in:
+                            .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    LabeledContent(
+                        "Price Range",
+                        value:
+                            meal.priceRange
+                    )
+                }
+
+                if let user =
+                    meal.user,
+                   !user.name.isEmpty {
+
+                    LabeledContent(
+                        "Created By",
+                        value:
+                            user.name
+                    )
+                }
+
+                if let meals =
+                    meal.meals {
+
+                    LabeledContent(
+                        "Meals",
+                        value:
+                            "\(meals.count)"
+                    )
+                }
+
+                if meal.imageURL != nil {
+
+                    LabeledContent(
+                        "Image",
+                        value:
+                            "Available"
+                    )
+                }
+
+                if let copyStatus =
+                    meal.copyStatus,
+                   !copyStatus.status.isEmpty {
+
+                    LabeledContent(
+                        "Copy Status",
+                        value:
+                            copyStatus.status
+                    )
+                }
+
+            } else {
+
+                Text(
+                    "No Suggested Meal details are stored on this node yet."
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+
+
+        case .workout:
+
+            if let workout =
+                content.workout {
+
+                LabeledContent(
+                    "Workout",
+                    value:
+                        workout.title
+                )
+
+                if !workout.durationText.isEmpty {
+
+                    LabeledContent(
+                        "Duration",
+                        value:
+                            workout.durationText
+                    )
+                }
+
+                if !workout.location.isEmpty {
+
+                    LabeledContent(
+                        "Location",
+                        value:
+                            workout.location
+                    )
+                }
+
+                if !workout.distance.isEmpty {
+
+                    LabeledContent(
+                        "Distance",
+                        value:
+                            workout.distance
+                    )
+                }
+
+                if let trainer =
+                    workout.trainer,
+                   !trainer.name.isEmpty {
+
+                    LabeledContent(
+                        "Trainer",
+                        value:
+                            trainer.name
+                    )
+                }
+
+                if !workout.categories.isEmpty {
+
+                    LabeledContent(
+                        "Categories",
+                        value:
+                            workout.categories
+                                .joined(
+                                    separator:
+                                        ", "
+                                )
+                    )
+                }
+
+                if let imageURLs =
+                    workout.imageURLs {
+
+                    LabeledContent(
+                        "Images",
+                        value:
+                            "\(imageURLs.count)"
+                    )
+                }
+
+                if let status =
+                    workout.workoutStatus,
+                   !status.isEmpty {
+
+                    LabeledContent(
+                        "Workout Status",
+                        value:
+                            status
+                    )
+                }
+
+                if let participants =
+                    workout.participants {
+
+                    LabeledContent(
+                        "Participants",
+                        value:
+                            "\(participants.count)"
+                    )
+                }
+
+                if !workout.rating.isEmpty {
+
+                    LabeledContent(
+                        "Rating",
+                        value:
+                            workout.rating
+                    )
+                }
+
+                if let copyStatus =
+                    workout.copyStatus,
+                   !copyStatus.status.isEmpty {
+
+                    LabeledContent(
+                        "Copy Status",
+                        value:
+                            copyStatus.status
+                    )
+                }
+
+            } else {
+
+                Text(
+                    "No Workout details are stored on this node yet."
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+
+
+        case .task:
+
+            if let task =
+                content.task {
+
+                LabeledContent(
+                    "Task",
+                    value:
+                        task.title
+                )
+
+                if !task.description.isEmpty {
+
+                    VStack(
+                        alignment:
+                            .leading,
+                        spacing:
+                            4
+                    ) {
+
+                        Text(
+                            "Task Description"
+                        )
+                        .font(
+                            .caption
+                        )
+                        .foregroundStyle(
+                            .secondary
+                        )
+
+                        Text(
+                            task.description
+                        )
+                    }
+                }
+
+                LabeledContent(
+                    "Images",
+                    value:
+                        "\(task.imageURLs?.count ?? 0)"
+                )
+
+                LabeledContent(
+                    "Videos",
+                    value:
+                        "\(task.videoURLs?.count ?? 0)"
+                )
+
+                if let copyStatus =
+                    task.copyStatus,
+                   !copyStatus.status.isEmpty {
+
+                    LabeledContent(
+                        "Copy Status",
+                        value:
+                            copyStatus.status
+                    )
+                }
+
+            } else {
+
+                Text(
+                    "No Task details are stored on this node yet."
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+        }
+        }
+    }
+
+
+    var activityDetailsSection: some View {
+
+        Section(
+            "Details"
+        ) {
+
+            TextField(
+                "Location",
+                text:
+                    activityLocationBinding
+            )
+
+
+            TextField(
+                "Description",
+                text:
+                    activityDescriptionBinding,
+                axis:
+                    .vertical
+            )
+            .lineLimit(
+                3...8
+            )
+        }
+    }
+
+
+    var activityStatusSection: some View {
+
+        Section(
+            "Status"
+        ) {
+
+            LabeledContent(
+                "Activity Status"
+            ) {
+
+                Text(
+                    activityStatusDisplayName
+                )
+                .fontWeight(
+                    .semibold
+                )
+            }
+        }
+    }
+
+
+    var activityTypeEditorDisplayName: String {
+
+        switch activityResolvedType {
+
+        case .meal:
+
+            return "Suggested Meal"
+
+        case .workout:
+
+            return "Workout"
+
+        case .task:
+
+            return "Task"
+        }
+    }
+
+
+    var activityResolvedType:
+        ActivityNodeContent.ActivityType {
+
+        guard case let .activity(
+            content
+        ) = node.content
+        else {
+
+            return .task
+        }
+
+        return content.resolvedActivityType
+    }
+
+
+    var activityStatusDisplayName: String {
+
+        guard case let .activity(
+            content
+        ) = node.content
+        else {
+
+            return "Not Started"
+        }
+
+        let cleaned =
+            content.status
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+
+        return cleaned.isEmpty
+            ? "Not Started"
+            : cleaned
+    }
+}
+
+
+// =====================================================
+// MARK: - Activity Bindings
+// =====================================================
+
+private extension GameNodeEditorForm {
+
+    var activityDateBinding:
+        Binding<String> {
+
+        Binding {
+
+            guard case let .activity(
+                content
+            ) = node.content
+            else {
+
+                return ""
+            }
+
+            return content.date
+
+        } set: { newValue in
+
+            guard case var .activity(
+                content
+            ) = node.content
+            else {
+
+                return
+            }
+
+            content.date =
+                newValue
+
+            node.content =
+                .activity(
+                    content
+                )
+        }
+    }
+
+
+    var activityLocationBinding:
+        Binding<String> {
+
+        Binding {
+
+            guard case let .activity(
+                content
+            ) = node.content
+            else {
+
+                return ""
+            }
+
+            return content.location
+
+        } set: { newValue in
+
+            guard case var .activity(
+                content
+            ) = node.content
+            else {
+
+                return
+            }
+
+            content.location =
+                newValue
+
+            node.content =
+                .activity(
+                    content
+                )
+        }
+    }
+
+
+    var activityStartTimeBinding:
+        Binding<Date> {
+
+        Binding {
+
+            if case let .activity(
+                content
+            ) = node.content,
+               let parsed =
+                    activityDayTime(
+                        from:
+                            content.startTime
+                    ) {
+
+                return referenceDate(
+                    for:
+                        parsed
+                )
+            }
+
+            return referenceDate(
+                for:
+                    node.time
+            )
+
+        } set: { newDate in
+
+            let newTime =
+                activityDayTime(
+                    from:
+                        newDate
+                )
+
+            guard case var .activity(
+                content
+            ) = node.content
+            else {
+
+                return
+            }
+
+            content.startTime =
+                newTime
+                    .displayClockString
+
+            node.content =
+                .activity(
+                    content
+                )
+
+            // Start time is always editable. A road-vertex placement has a
+            // fixed semantic time, so changing the Activity's start time
+            // intentionally detaches it from that intersection while
+            // preserving the vertex's progress/X position. This avoids
+            // silently snapping the activity to some other road.
+            switch node.placement {
+
+            case let .roadVertex(
+                vertexID
+            ):
+
+                if let vertex =
+                    roadGraph.vertex(
+                        id:
+                            vertexID
+                    ) {
+
+                    node.setPlacement(
+                        .coordinate(
+                            MapCoordinate(
+                                time:
+                                    newTime,
+                                progress:
+                                    vertex.coordinate.progress
+                            )
+                        )
+                    )
+
+                } else {
+
+                    node.setTime(
+                        newTime
+                    )
+                }
+
+            case .coordinate:
+
+                node.setTime(
+                    newTime
+                )
+            }
+        }
+    }
+
+
+    var activityEndTimeBinding:
+        Binding<Date> {
+
+        Binding {
+
+            if case let .activity(
+                content
+            ) = node.content,
+               let parsed =
+                    activityDayTime(
+                        from:
+                            content.endTime
+                    ) {
+
+                return referenceDate(
+                    for:
+                        parsed
+                )
+            }
+
+            let fallback =
+                DayTime(
+                    secondsFromMidnight:
+                        node.time.secondsFromMidnight
+                        + DayTime.secondsPerHour
+                )
+
+            return referenceDate(
+                for:
+                    fallback
+            )
+
+        } set: { newDate in
+
+            let newTime =
+                activityDayTime(
+                    from:
+                        newDate
+                )
+
+            guard case var .activity(
+                content
+            ) = node.content
+            else {
+
+                return
+            }
+
+            content.endTime =
+                newTime
+                    .displayClockString
+
+            node.content =
+                .activity(
+                    content
+                )
+        }
+    }
+
+
+    func activityDayTime(
+        from date: Date
+    ) -> DayTime {
+
+        let components =
+            Calendar.current
+                .dateComponents(
+                    [
+                        .hour,
+                        .minute,
+                        .second
+                    ],
+                    from:
+                        date
+                )
+
+        let seconds =
+            TimeInterval(
+                (components.hour ?? 0) * 3600
+                +
+                (components.minute ?? 0) * 60
+                +
+                (components.second ?? 0)
+            )
+
+        return DayTime(
+            secondsFromMidnight:
+                seconds
+        )
+    }
+
+
+    func activityDayTime(
+        from value: String
+    ) -> DayTime? {
+
+        let cleaned =
+            value
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+
+        guard !cleaned.isEmpty
+        else {
+
+            return nil
+        }
+
+        let formatter =
+            DateFormatter()
+
+        formatter.locale =
+            Locale(
+                identifier:
+                    "en_US_POSIX"
+            )
+
+        formatter.timeZone =
+            TimeZone(
+                secondsFromGMT:
+                    0
+            )
+
+        let formats = [
+            "h:mm a",
+            "hh:mm a",
+            "h:mm:ss a",
+            "hh:mm:ss a",
+            "H:mm",
+            "HH:mm",
+            "H:mm:ss",
+            "HH:mm:ss"
+        ]
+
+        for format in formats {
+
+            formatter.dateFormat =
+                format
+
+            if let date =
+                formatter.date(
+                    from:
+                        cleaned
+                ) {
+
+                var calendar =
+                    Calendar(
+                        identifier:
+                            .gregorian
+                    )
+
+                calendar.timeZone =
+                    formatter.timeZone
+
+                let components =
+                    calendar.dateComponents(
+                        [
+                            .hour,
+                            .minute,
+                            .second
+                        ],
+                        from:
+                            date
+                    )
+
+                return DayTime(
+                    secondsFromMidnight:
+                        TimeInterval(
+                            (components.hour ?? 0) * 3600
+                            +
+                            (components.minute ?? 0) * 60
+                            +
+                            (components.second ?? 0)
+                        )
+                )
+            }
+        }
+
+        return nil
+    }
+}
+
+
+
+// =====================================================
+// MARK: - Node Time
+// =====================================================
+
+private extension GameNodeEditorForm {
+
+    var timeSection: some View {
+
+        Section(
+            "Time"
+        ) {
+
+            DatePicker(
+                "Node Time",
+                selection:
+                    nodeTimeBinding,
+                displayedComponents:
+                    .hourAndMinute
+            )
+            .disabled(
+                isRoadVertexPlacement
+            )
+
+
+            if isRoadVertexPlacement {
+
+                Text(
+                    "This node is attached to a road intersection, so its time follows that intersection."
+                )
+                .font(
+                    .caption
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+
+            } else {
+
+                Text(
+                    "Time is stored directly on the GameMapNode and also controls the node's vertical map position."
+                )
+                .font(
+                    .caption
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+        }
+    }
+
+
+    var isRoadVertexPlacement: Bool {
+
+        if case .roadVertex = node.placement {
+            return true
+        }
+
+        return false
+    }
+}
+
+
+
+// =====================================================
 // MARK: - Image Editor
 // =====================================================
 
@@ -380,8 +1911,6 @@ private extension GameNodeEditorForm {
         case none
 
         case asset
-
-        case systemSymbol
 
         case remote
 
@@ -404,11 +1933,6 @@ private extension GameNodeEditorForm {
             case .asset:
 
                 return "Asset"
-
-
-            case .systemSymbol:
-
-                return "SF Symbol"
 
 
             case .remote:
@@ -450,7 +1974,7 @@ private extension GameNodeEditorForm {
             case .none:
 
                 Text(
-                    "This node will use its fallback marker."
+                    "No custom image selected. This node will use its type-specific placeholder image."
                 )
                 .font(
                     .caption
@@ -466,19 +1990,6 @@ private extension GameNodeEditorForm {
                     "Asset Name",
                     text:
                         imageValueBinding
-                )
-                .autocorrectionDisabled()
-
-
-            case .systemSymbol:
-
-                TextField(
-                    "SF Symbol Name",
-                    text:
-                        imageValueBinding
-                )
-                .textInputAutocapitalization(
-                    .never
                 )
                 .autocorrectionDisabled()
 
@@ -500,10 +2011,7 @@ private extension GameNodeEditorForm {
             }
 
 
-            if currentImage != nil {
-
-                nodeImagePreview
-            }
+            nodeImagePreview
         }
     }
 }
@@ -530,26 +2038,29 @@ private extension GameNodeEditorForm {
                     name
                 ):
 
-                    Image(
-                        name
-                    )
-                    .resizable()
-                    .scaledToFill()
+                    if let image =
+                        UIImage(
+                            named:
+                                name
+                        )
+                    {
+
+                        Image(
+                            uiImage:
+                                image
+                        )
+                        .resizable()
+                        .scaledToFill()
+
+                    } else {
+
+                        placeholderNodeImage
+                    }
 
 
-                case let .systemSymbol(
-                    name
-                ):
+                case .systemSymbol:
 
-                    Image(
-                        systemName:
-                            name
-                    )
-                    .resizable()
-                    .scaledToFit()
-                    .padding(
-                        12
-                    )
+                    placeholderNodeImage
 
 
                 case let .remote(
@@ -572,7 +2083,15 @@ private extension GameNodeEditorForm {
 
                             case .empty:
 
-                                ProgressView()
+                                ZStack {
+
+                                    placeholderNodeImage
+
+                                    ProgressView()
+                                        .tint(
+                                            .white
+                                        )
+                                }
 
 
                             case let .success(
@@ -586,33 +2105,24 @@ private extension GameNodeEditorForm {
 
                             case .failure:
 
-                                Image(
-                                    systemName:
-                                        "photo.badge.exclamationmark"
-                                )
-                                .font(
-                                    .title
-                                )
+                                placeholderNodeImage
 
 
                             @unknown default:
 
-                                EmptyView()
+                                placeholderNodeImage
                             }
                         }
 
                     } else {
 
-                        Image(
-                            systemName:
-                                "photo.badge.exclamationmark"
-                        )
+                        placeholderNodeImage
                     }
 
 
                 case nil:
 
-                    EmptyView()
+                    placeholderNodeImage
                 }
             }
             .frame(
@@ -643,6 +2153,23 @@ private extension GameNodeEditorForm {
         )
     }
 }
+
+private extension GameNodeEditorForm {
+
+    var placeholderNodeImage: some View {
+
+        Image(
+            uiImage:
+                GameNodePlaceholderImage.image(
+                    for:
+                        node.content.kind
+                )
+        )
+        .resizable()
+        .scaledToFill()
+    }
+}
+
 
 // =====================================================
 // MARK: - Placement
@@ -749,10 +2276,29 @@ private extension GameNodeEditorForm {
                         selectedRoadVertexID
                 ) { vertexID in
 
-                    node.placement =
-                        .roadVertex(
-                            vertexID
+                    if let vertex =
+                        roadGraph.vertex(
+                            id:
+                                vertexID
                         )
+                    {
+
+                        node.setPlacement(
+                            .roadVertex(
+                                vertexID
+                            ),
+                            resolvedRoadTime:
+                                vertex.coordinate.time
+                        )
+
+                    } else {
+
+                        node.setPlacement(
+                            .roadVertex(
+                                vertexID
+                            )
+                        )
+                    }
                 }
             }
     }
@@ -794,17 +2340,17 @@ private extension GameNodeEditorForm {
 }
 
 // =====================================================
-// MARK: - Label Bindings
+// MARK: - Play Bindings
 // =====================================================
 
 private extension GameNodeEditorForm {
 
-    var labelTextBinding:
+    var playTitleBinding:
         Binding<String> {
 
         Binding {
 
-            guard case let .label(
+            guard case let .play(
                 content
             ) = node.content
             else {
@@ -813,11 +2359,11 @@ private extension GameNodeEditorForm {
             }
 
 
-            return content.text
+            return content.title
 
         } set: { newValue in
 
-            guard case var .label(
+            guard case var .play(
                 content
             ) = node.content
             else {
@@ -826,12 +2372,12 @@ private extension GameNodeEditorForm {
             }
 
 
-            content.text =
+            content.title =
                 newValue
 
 
             node.content =
-                .label(
+                .play(
                     content
                 )
         }
@@ -1055,7 +2601,7 @@ private extension GameNodeEditorForm {
 
 private extension GameNodeEditorForm {
 
-    var postTitleBinding:
+    var postSubjectBinding:
         Binding<String> {
 
         Binding {
@@ -1064,12 +2610,11 @@ private extension GameNodeEditorForm {
                 content
             ) = node.content
             else {
-
                 return ""
             }
 
-
-            return content.title
+            return content.snapshot?.subject
+                ?? content.title
 
         } set: { newValue in
 
@@ -1077,14 +2622,21 @@ private extension GameNodeEditorForm {
                 content
             ) = node.content
             else {
-
                 return
             }
-
 
             content.title =
                 newValue
 
+            if var snapshot =
+                content.snapshot {
+
+                snapshot.subject =
+                    newValue
+
+                content.snapshot =
+                    snapshot
+            }
 
             node.content =
                 .post(
@@ -1094,44 +2646,193 @@ private extension GameNodeEditorForm {
     }
 
 
-    var postIDBinding:
+    var postImageURLsBinding:
         Binding<String> {
 
         Binding {
 
-            guard case let .post(
-                content
-            ) = node.content
+            guard
+                case let .post(content) = node.content,
+                let snapshot = content.snapshot
             else {
-
                 return ""
             }
 
-
-            return content.postID
+            return snapshot
+                .postImageURLs
+                .joined(
+                    separator: "\n"
+                )
 
         } set: { newValue in
 
-            guard case var .post(
-                content
-            ) = node.content
-            else {
+            updatePostSnapshot { snapshot in
 
-                return
+                snapshot.postImageURLs =
+                    postMediaURLs(
+                        from:
+                            newValue
+                    )
+
+                synchronizePostMediaMetadata(
+                    &snapshot
+                )
+            }
+        }
+    }
+
+
+    var postVideoURLsBinding:
+        Binding<String> {
+
+        Binding {
+
+            guard
+                case let .post(content) = node.content,
+                let snapshot = content.snapshot
+            else {
+                return ""
             }
 
-
-            content.postID =
-                newValue
-
-
-            node.content =
-                .post(
-                    content
+            return snapshot
+                .postVideoURLs
+                .joined(
+                    separator: "\n"
                 )
+
+        } set: { newValue in
+
+            updatePostSnapshot { snapshot in
+
+                snapshot.postVideoURLs =
+                    postMediaURLs(
+                        from:
+                            newValue
+                    )
+
+                synchronizePostMediaMetadata(
+                    &snapshot
+                )
+            }
+        }
+    }
+
+
+    func postMediaURLs(
+        from value: String
+    ) -> [String] {
+
+        value
+            .components(
+                separatedBy:
+                    .newlines
+            )
+            .map {
+                $0.trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+            }
+            .filter {
+                !$0.isEmpty
+                && $0.lowercased() != "none"
+            }
+    }
+
+
+    func updatePostSnapshot(
+        _ update: (inout PostNodeSnapshot) -> Void
+    ) {
+
+        guard case var .post(
+            content
+        ) = node.content,
+              var snapshot = content.snapshot
+        else {
+            return
+        }
+
+        update(
+            &snapshot
+        )
+
+        content.snapshot =
+            snapshot
+
+        content.title =
+            snapshot.preferredTitle
+
+        if let markerImageURL =
+            snapshot.preferredMarkerImageURL {
+
+            content.image =
+                .remote(
+                    urlString:
+                        markerImageURL
+                )
+
+        } else {
+
+            content.image =
+                nil
+        }
+
+        node.content =
+            .post(
+                content
+            )
+    }
+
+
+    func synchronizePostMediaMetadata(
+        _ snapshot: inout PostNodeSnapshot
+    ) {
+
+        let gifCount =
+            snapshot.postGIFMedia.isEmpty
+            ? 0
+            : 1
+
+        snapshot.postMediaCount =
+            snapshot.postImageURLs.count
+            + snapshot.postVideoURLs.count
+            + gifCount
+
+        if let firstImage =
+            snapshot.postImageURLs.first {
+
+            snapshot.postMainMediaURL =
+                firstImage
+
+            snapshot.postMainMediaType =
+                "image"
+
+            return
+        }
+
+        if let firstVideo =
+            snapshot.postVideoURLs.first {
+
+            snapshot.postMainMediaURL =
+                firstVideo
+
+            snapshot.postMainMediaType =
+                "video"
+
+            return
+        }
+
+        if snapshot.postGIFMedia.isEmpty {
+
+            snapshot.postMainMediaURL =
+                ""
+
+            snapshot.postMainMediaType =
+                ""
         }
     }
 }
+
 
 // =====================================================
 // MARK: - Media Bindings
@@ -1415,7 +3116,7 @@ private extension GameNodeEditorForm {
 
             case .systemSymbol:
 
-                return .systemSymbol
+                return .none
 
 
             case .remote:
@@ -1442,16 +3143,6 @@ private extension GameNodeEditorForm {
 
                 setNodeImage(
                     .asset(
-                        name:
-                            existingValue
-                    )
-                )
-
-
-            case .systemSymbol:
-
-                setNodeImage(
-                    .systemSymbol(
                         name:
                             existingValue
                     )
@@ -1494,12 +3185,8 @@ private extension GameNodeEditorForm {
 
             case .systemSymbol:
 
-                setNodeImage(
-                    .systemSymbol(
-                        name:
-                            newValue
-                    )
-                )
+                // Legacy value. Choosing Asset or Remote replaces it.
+                break
 
 
             case .remote:
@@ -1532,11 +3219,9 @@ private extension GameNodeEditorForm {
             return name
 
 
-        case let .systemSymbol(
-            name
-        ):
+        case .systemSymbol:
 
-            return name
+            return ""
 
 
         case let .remote(
@@ -1560,7 +3245,7 @@ private extension GameNodeEditorForm {
 
         switch node.content {
 
-        case var .label(
+        case var .play(
             content
         ):
 
@@ -1568,7 +3253,7 @@ private extension GameNodeEditorForm {
                 image
 
             node.content =
-                .label(
+                .play(
                     content
                 )
 
@@ -1679,7 +3364,7 @@ private extension GameNodeEditorForm {
                 .coordinate(
                     MapCoordinate(
                         time:
-                            coordinate.time,
+                            node.time,
                         progress:
                             MapProgress(
                                 newProgress
@@ -1708,12 +3393,25 @@ private extension GameNodeEditorForm {
 
         } set: { newValue in
 
-            node.placement =
-                .roadVertex(
-                    RoadVertexID(
-                        newValue
-                    )
+            let vertexID =
+                RoadVertexID(
+                    newValue
                 )
+
+
+            node.setPlacement(
+                .roadVertex(
+                    vertexID
+                ),
+                resolvedRoadTime:
+                    roadGraph
+                        .vertex(
+                            id:
+                                vertexID
+                        )?
+                        .coordinate
+                        .time
+            )
         }
     }
 }
@@ -1724,37 +3422,17 @@ private extension GameNodeEditorForm {
 
 private extension GameNodeEditorForm {
 
-    var coordinateTimeBinding:
+    var nodeTimeBinding:
         Binding<Date> {
 
         Binding {
 
-            guard case let .coordinate(
-                coordinate
-            ) = node.placement
-            else {
-
-                return referenceDate(
-                    for:
-                        .noon
-                )
-            }
-
-
-            return referenceDate(
+            referenceDate(
                 for:
-                    coordinate.time
+                    node.time
             )
 
         } set: { newDate in
-
-            guard case let .coordinate(
-                coordinate
-            ) = node.placement
-            else {
-
-                return
-            }
 
 
             let calendar =
@@ -1798,18 +3476,16 @@ private extension GameNodeEditorForm {
                 )
 
 
-            node.placement =
-                .coordinate(
-                    MapCoordinate(
-                        time:
-                            DayTime(
-                                secondsFromMidnight:
-                                    seconds
-                            ),
-                        progress:
-                            coordinate.progress
-                    )
+            let newTime =
+                DayTime(
+                    secondsFromMidnight:
+                        seconds
                 )
+
+
+            node.setTime(
+                newTime
+            )
         }
     }
 
@@ -1901,15 +3577,6 @@ private extension GameNodeEditorForm {
         some View {
 
         Group {
-
-            DatePicker(
-                "Time",
-                selection:
-                    coordinateTimeBinding,
-                displayedComponents:
-                    .hourAndMinute
-            )
-
 
             HStack {
 
@@ -2217,10 +3884,11 @@ private extension GameNodeEditorForm {
         }
 
 
-        node.placement =
+        node.setPlacement(
             .coordinate(
                 vertex.coordinate
             )
+        )
     }
 }
 
@@ -2242,10 +3910,13 @@ private extension GameNodeEditorForm {
         }
 
 
-        node.placement =
+        node.setPlacement(
             .roadVertex(
                 vertex.id
-            )
+            ),
+            resolvedRoadTime:
+                vertex.coordinate.time
+        )
     }
 
 

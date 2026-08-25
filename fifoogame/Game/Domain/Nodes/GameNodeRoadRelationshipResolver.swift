@@ -2,8 +2,10 @@
 //  GameNodeRoadRelationshipResolver.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
+
+
 
 
 import Foundation
@@ -95,7 +97,9 @@ struct GameNodeRoadRelationshipResolver {
         switch hit {
 
         case let .vertex(
-            vertexID
+            id: vertexID,
+            worldPoint: _,
+            mapCoordinate: _
         ):
 
             return .vertex(
@@ -105,7 +109,9 @@ struct GameNodeRoadRelationshipResolver {
 
 
         case let .edge(
-            edgeID
+            id: edgeID,
+            worldPoint: _,
+            mapCoordinate: _
         ):
 
             guard

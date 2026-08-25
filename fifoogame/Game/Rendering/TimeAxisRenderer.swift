@@ -2,7 +2,7 @@
 //  TimeAxisRenderer.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/22/26.
+//  Created by Daudi Sagala on 8/23/26.
 //
 
 
@@ -17,28 +17,29 @@ final class TimeAxisRenderer {
     // =====================================================
 
     private struct TickSpecification {
-
         let key: String
         let text: String
         let time: DayTime
-        let verticalAlignment: SKLabelVerticalAlignmentMode
     }
 
 
     private struct RenderedTick {
-
         let worldY: CGFloat
-        let node: SKLabelNode
+        let node: SKNode
+        let size: CGSize
     }
 
 
     private struct LayoutSignature: Equatable {
-
         let cameraPosition: CGPoint
         let cameraXScale: CGFloat
         let cameraYScale: CGFloat
         let cameraRotation: CGFloat
         let viewBounds: CGRect
+        let safeAreaTop: CGFloat
+        let safeAreaLeft: CGFloat
+        let safeAreaBottom: CGFloat
+        let safeAreaRight: CGFloat
     }
 
 
@@ -57,8 +58,33 @@ final class TimeAxisRenderer {
     // MARK: - Style
     // =====================================================
 
-    private let horizontalInset: CGFloat = 24
-    private let fontSize: CGFloat = 40
+    /// Space between the left safe-area edge and the label pill.
+    private let horizontalInset: CGFloat = 16
+
+    /// Space between a label pill and the safe top/bottom visible edge.
+    private let verticalEdgeMargin: CGFloat = 10
+
+    private let fontSize: CGFloat = 32
+
+    private let horizontalPadding: CGFloat = 16
+    private let verticalPadding: CGFloat = 8
+    private let backgroundCornerRadius: CGFloat = 15
+
+    private let backgroundColor =
+        SKColor(
+            red: 39/255,
+            green: 121/255,
+            blue: 245/255,
+            alpha: 0.95
+        )
+
+    private let backgroundBorderColor =
+        SKColor.white.withAlphaComponent(0.20)
+
+    private let backgroundBorderWidth: CGFloat = 1.25
+
+    private let textColor =
+        SKColor.white.withAlphaComponent(0.96)
 
 
     // =====================================================
@@ -102,7 +128,6 @@ final class TimeAxisRenderer {
     // =====================================================
 
     func invalidateLayout() {
-
         lastLayoutSignature = nil
     }
 
@@ -114,6 +139,7 @@ final class TimeAxisRenderer {
     private func buildLabels() {
 
         container.removeAllChildren()
+
         ticks.removeAll(
             keepingCapacity: true
         )
@@ -134,60 +160,112 @@ final class TimeAxisRenderer {
                 specification.text
 
             label.fontName =
-                "AvenirNext-Medium"
+                "AvenirNext-DemiBold"
 
             label.fontSize =
                 fontSize
 
             label.fontColor =
-                .white
-                .withAlphaComponent(0.82)
+                textColor
 
             label.horizontalAlignmentMode =
-                .left
+                .center
 
             label.verticalAlignmentMode =
-                specification.verticalAlignment
-
-            label.name =
-                "time-axis-\(specification.key)"
+                .center
 
             label.position =
                 .zero
+
+            label.zPosition =
+                1
 
             label.isUserInteractionEnabled =
                 false
 
 
-            container.addChild(
+            let textSize =
+                label.frame.size
+
+            let pillSize =
+                CGSize(
+                    width:
+                        ceil(textSize.width)
+                        + (horizontalPadding * 2),
+                    height:
+                        ceil(textSize.height)
+                        + (verticalPadding * 2)
+                )
+
+
+            let background =
+                SKShapeNode(
+                    rectOf: pillSize,
+                    cornerRadius:
+                        min(
+                            backgroundCornerRadius,
+                            pillSize.height * 0.5
+                        )
+                )
+
+            background.fillColor =
+                backgroundColor
+
+            background.strokeColor =
+                backgroundBorderColor
+
+            background.lineWidth =
+                backgroundBorderWidth
+
+            background.zPosition =
+                0
+
+            background.isAntialiased =
+                true
+
+            background.isUserInteractionEnabled =
+                false
+
+
+            let tickNode = SKNode()
+
+            tickNode.name =
+                "time-axis-\(specification.key)"
+
+            tickNode.isUserInteractionEnabled =
+                false
+
+            tickNode.addChild(
+                background
+            )
+
+            tickNode.addChild(
                 label
+            )
+
+            container.addChild(
+                tickNode
             )
 
 
             ticks.append(
                 RenderedTick(
                     worldY: worldY,
-                    node: label
+                    node: tickNode,
+                    size: pillSize
                 )
             )
         }
     }
 
 
-    /// Only the five semantic labels requested for the Fifoo day axis are
-    /// created. The earlier renderer created 24 label nodes even though 19
-    /// of them contained empty strings.
-    ///
-    /// The final label is anchored to the exact end-of-day boundary but is
-    /// named "11:59 PM" to retain the existing product wording.
     private var tickSpecifications: [TickSpecification] {
 
         [
             TickSpecification(
                 key: "12am",
                 text: "12 AM",
-                time: .startOfDay,
-                verticalAlignment: .top
+                time: .startOfDay
             ),
 
             TickSpecification(
@@ -197,8 +275,7 @@ final class TimeAxisRenderer {
                     DayTime(
                         secondsFromMidnight:
                             6 * DayTime.secondsPerHour
-                    ),
-                verticalAlignment: .center
+                    )
             ),
 
             TickSpecification(
@@ -208,8 +285,7 @@ final class TimeAxisRenderer {
                     DayTime(
                         secondsFromMidnight:
                             12 * DayTime.secondsPerHour
-                    ),
-                verticalAlignment: .center
+                    )
             ),
 
             TickSpecification(
@@ -219,15 +295,17 @@ final class TimeAxisRenderer {
                     DayTime(
                         secondsFromMidnight:
                             18 * DayTime.secondsPerHour
-                    ),
-                verticalAlignment: .center
+                    )
             ),
 
             TickSpecification(
                 key: "1159pm",
                 text: "11:59 PM",
-                time: .endOfDay,
-                verticalAlignment: .bottom
+                time:
+                    DayTime(
+                        secondsFromMidnight:
+                            DayTime.secondsPerDay - 60
+                    )
             )
         ]
     }
@@ -243,6 +321,10 @@ final class TimeAxisRenderer {
         view: SKView
     ) {
 
+        let safeAreaInsets =
+            view.safeAreaInsets
+
+
         let signature =
             LayoutSignature(
                 cameraPosition:
@@ -254,56 +336,155 @@ final class TimeAxisRenderer {
                 cameraRotation:
                     camera.zRotation,
                 viewBounds:
-                    view.bounds
+                    view.bounds,
+                safeAreaTop:
+                    safeAreaInsets.top,
+                safeAreaLeft:
+                    safeAreaInsets.left,
+                safeAreaBottom:
+                    safeAreaInsets.bottom,
+                safeAreaRight:
+                    safeAreaInsets.right
             )
 
 
-        // Most SpriteKit frames occur while the camera is stationary. Avoid
-        // repeating coordinate conversions when nothing that can affect the
-        // overlay layout has changed.
         guard signature != lastLayoutSignature else {
             return
         }
-
 
         lastLayoutSignature =
             signature
 
 
         // -------------------------------------------------
-        // Fixed screen X
+        // Viewport bounds in CAMERA-LOCAL coordinates
         // -------------------------------------------------
+        //
+        // Two vertical ranges are intentionally calculated:
+        //
+        // 1. The PHYSICAL viewport. This tells us whether a
+        //    day-boundary label is genuinely still close to
+        //    the screen edge.
+        //
+        // 2. The SAFE viewport. This is where a complete pill
+        //    is allowed to sit without being covered by the
+        //    status bar / Dynamic Island / home indicator.
+        //
+        // The important Step 8.1 behavior is that 12 AM and
+        // 11:59 PM are NOT permanently pinned to these edges.
+        // They are edge-protected only while their real world
+        // positions are still intersecting the physical view.
 
-        let desiredViewPoint =
-            CGPoint(
-                x:
-                    view.bounds.minX
-                    + horizontalInset,
-                y:
-                    view.bounds.midY
-            )
+        let safeLeftViewX =
+            view.bounds.minX
+            + safeAreaInsets.left
+            + horizontalInset
+
+        let safeTopViewY =
+            view.bounds.minY
+            + safeAreaInsets.top
+            + verticalEdgeMargin
+
+        let safeBottomViewY =
+            view.bounds.maxY
+            - safeAreaInsets.bottom
+            - verticalEdgeMargin
 
 
-        let scenePointAtLeftInset =
-            scene.convertPoint(
-                fromView: desiredViewPoint
-            )
+        func cameraPoint(
+            viewX: CGFloat,
+            viewY: CGFloat
+        ) -> CGPoint {
 
+            let scenePoint =
+                scene.convertPoint(
+                    fromView:
+                        CGPoint(
+                            x: viewX,
+                            y: viewY
+                        )
+                )
 
-        let cameraPointAtLeftInset =
-            camera.convert(
-                scenePointAtLeftInset,
+            return camera.convert(
+                scenePoint,
                 from: scene
             )
+        }
 
 
-        let fixedX =
-            cameraPointAtLeftInset.x
+        let leftCameraPoint =
+            cameraPoint(
+                viewX: safeLeftViewX,
+                viewY: view.bounds.midY
+            )
+
+        let safeTopCameraPoint =
+            cameraPoint(
+                viewX: view.bounds.midX,
+                viewY: safeTopViewY
+            )
+
+        let safeBottomCameraPoint =
+            cameraPoint(
+                viewX: view.bounds.midX,
+                viewY: safeBottomViewY
+            )
+
+        let physicalTopCameraPoint =
+            cameraPoint(
+                viewX: view.bounds.midX,
+                viewY: view.bounds.minY
+            )
+
+        let physicalBottomCameraPoint =
+            cameraPoint(
+                viewX: view.bounds.midX,
+                viewY: view.bounds.maxY
+            )
+
+
+        let fixedLeftX =
+            leftCameraPoint.x
+
+        let safeMaximumY =
+            max(
+                safeTopCameraPoint.y,
+                safeBottomCameraPoint.y
+            )
+
+        let safeMinimumY =
+            min(
+                safeTopCameraPoint.y,
+                safeBottomCameraPoint.y
+            )
+
+        let physicalMaximumY =
+            max(
+                physicalTopCameraPoint.y,
+                physicalBottomCameraPoint.y
+            )
+
+        let physicalMinimumY =
+            min(
+                physicalTopCameraPoint.y,
+                physicalBottomCameraPoint.y
+            )
 
 
         // -------------------------------------------------
-        // World-derived Y
+        // Semantic Y positioning
         // -------------------------------------------------
+        //
+        // Normal labels NEVER clamp to the top/bottom edge.
+        // They move vertically with the map and disappear
+        // once their complete pill leaves the safe viewport.
+        //
+        // Only 12 AM and 11:59 PM receive temporary edge
+        // protection, because those semantic positions sit at
+        // the actual beginning/end of the map. Even those two
+        // labels are hidden as soon as their semantic pill has
+        // completely left the physical viewport. This prevents
+        // the old sticky-label overlap behavior.
 
         let semanticAxisX =
             MapCoordinateConverter
@@ -312,7 +493,7 @@ final class TimeAxisRenderer {
                 )
 
 
-        for tick in ticks {
+        for (index, tick) in ticks.enumerated() {
 
             let worldPoint =
                 CGPoint(
@@ -320,18 +501,120 @@ final class TimeAxisRenderer {
                     y: tick.worldY
                 )
 
-
-            let cameraLocalPoint =
+            let semanticCameraPoint =
                 camera.convert(
                     worldPoint,
                     from: scene
                 )
 
 
+            let halfHeight =
+                tick.size.height * 0.5
+
+            let minimumSafeCenterY =
+                safeMinimumY
+                + halfHeight
+
+            let maximumSafeCenterY =
+                safeMaximumY
+                - halfHeight
+
+
+            let isDayBoundaryTick =
+                index == 0
+                || index == ticks.count - 1
+
+
+            let semanticMinimumY =
+                semanticCameraPoint.y
+                - halfHeight
+
+            let semanticMaximumY =
+                semanticCameraPoint.y
+                + halfHeight
+
+
+            if isDayBoundaryTick {
+
+                // The boundary pill may be nudged fully inside
+                // the safe area, but ONLY while its true pill
+                // still intersects the physical screen.
+
+                let intersectsPhysicalViewport =
+                    semanticMaximumY >= physicalMinimumY
+                    && semanticMinimumY <= physicalMaximumY
+
+                guard intersectsPhysicalViewport else {
+
+                    tick.node.isHidden = true
+                    continue
+                }
+
+
+                tick.node.isHidden = false
+
+
+                let visibleY: CGFloat
+
+                if minimumSafeCenterY <= maximumSafeCenterY {
+
+                    visibleY =
+                        min(
+                            maximumSafeCenterY,
+                            max(
+                                minimumSafeCenterY,
+                                semanticCameraPoint.y
+                            )
+                        )
+
+                } else {
+
+                    visibleY =
+                        (
+                            safeMinimumY
+                            + safeMaximumY
+                        )
+                        * 0.5
+                }
+
+
+                tick.node.position =
+                    CGPoint(
+                        x:
+                            fixedLeftX
+                            + (tick.size.width * 0.5),
+                        y:
+                            visibleY
+                    )
+
+                continue
+            }
+
+
+            // Interior labels are never sticky. Keep the full
+            // pill visible or hide it entirely at the edge.
+
+            let fullyInsideSafeViewport =
+                semanticCameraPoint.y >= minimumSafeCenterY
+                && semanticCameraPoint.y <= maximumSafeCenterY
+
+
+            tick.node.isHidden =
+                !fullyInsideSafeViewport
+
+
+            guard fullyInsideSafeViewport else {
+                continue
+            }
+
+
             tick.node.position =
                 CGPoint(
-                    x: fixedX,
-                    y: cameraLocalPoint.y
+                    x:
+                        fixedLeftX
+                        + (tick.size.width * 0.5),
+                    y:
+                        semanticCameraPoint.y
                 )
         }
     }

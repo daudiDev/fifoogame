@@ -2,7 +2,7 @@
 //  DayMapView.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/22/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
 
 
@@ -11,13 +11,12 @@ import SpriteKit
 
 
 struct DayMapView: View {
+    
+    private let socketManager = SocketManager.shared
 
     // MARK: - Environment
     @Environment(\.scenePhase)
     private var scenePhase
-    
-    @Environment(\.openURL)
-    private var openURL
     
     @State
     private var presentedNodeID:
@@ -28,6 +27,17 @@ struct DayMapView: View {
     private var presentedMediaNodeID:
         GameNodeID?
 
+
+    @State
+    private var presentedPostNodeID:
+        GameNodeID?
+
+
+    @State
+    private var presentedHyperlinkNodeID:
+        GameNodeID?
+
+
     @State
     private var presentedRouteTarget:
         RouteInteractionTarget?
@@ -35,6 +45,34 @@ struct DayMapView: View {
     @State
     private var isShowingRouteBuilder =
         false
+
+
+    // MARK: - Node Actions
+
+    /// Host-app bridge for Activity actions. Off-path Activity nodes emit
+    /// `.join`; Activity nodes already on the chosen path emit `.skip` or
+    /// `.completed`.
+    private let onActivityAction:
+        ((ActivityNodeEditorAction, GameMapNode) -> Void)?
+
+
+    /// Host-app bridge for User-node actions such as opening a conversation
+    /// or the user's progress screen.
+    private let onUserAction:
+        ((UserNodeEditorAction, GameMapNode) -> Void)?
+
+
+    /// Host-app bridge for read-only Post actions such as Respond, Save,
+    /// opening the poster profile, or navigating to linked content.
+    private let onPostAction:
+        ((PostNodeViewAction, GameMapNode) -> Void)?
+
+
+    /// Host bridge for hyperlink votes. The web page itself is presented by
+    /// DayMapView; these callbacks let the app persist Upvote/Downvote.
+    private let onHyperlinkAction:
+        ((HyperlinkNodeViewAction, GameMapNode) -> Void)?
+
 
     // MARK: - State
 
@@ -49,10 +87,38 @@ struct DayMapView: View {
     private var isShowingAddNode =
         false
 
+    /// Set when the user taps a road or intersection. The request carries the
+    /// exact semantic coordinate resolved by RoadHitTester.
+    @State
+    private var roadNodeAddRequest:
+        RoadNodeAddRequest?
+
 
     // MARK: - Init
 
-    init() {
+    init(
+        onActivityAction: ((ActivityNodeEditorAction, GameMapNode) -> Void)? = nil,
+        onUserAction: ((UserNodeEditorAction, GameMapNode) -> Void)? = nil,
+        onPostAction: ((PostNodeViewAction, GameMapNode) -> Void)? = nil,
+        onHyperlinkAction: ((HyperlinkNodeViewAction, GameMapNode) -> Void)? = nil
+    ) {
+
+
+        self.onActivityAction =
+            onActivityAction
+
+
+        self.onUserAction =
+            onUserAction
+
+
+        self.onPostAction =
+            onPostAction
+
+
+        self.onHyperlinkAction =
+            onHyperlinkAction
+
 
         let gameStore =
             GameStore()
@@ -101,12 +167,10 @@ struct DayMapView: View {
                 
                 AppOverLayView(isShowingAddNode: $isShowingAddNode)
                 
-//                VStack {
-//                    topDiagnosticHUD
-//                    Spacer()
-//                }
-                
-                
+                if (socketManager.isShowingPlay) {
+                    PlayView()
+                }
+        
 
             } //zs
 
@@ -130,6 +194,30 @@ struct DayMapView: View {
 
                 isShowingAddNode =
                     false
+            }
+        }
+
+        // A road/intersection tap opens the same node-type chooser as the
+        // normal Add Node flow, but seeds it with the tapped road's resolved
+        // time/progress coordinate.
+        .sheet(
+            item:
+                $roadNodeAddRequest
+        ) { request in
+
+            AddGameNodeView(
+                initialCoordinate:
+                    request.coordinate,
+                roadGraph:
+                    store.roadGraph
+            ) { newNode in
+
+                store.addGameNode(
+                    newNode
+                )
+
+                roadNodeAddRequest =
+                    nil
             }
         }
         
@@ -184,7 +272,10 @@ struct DayMapView: View {
             store.printDebugRouteVertices()
             
             store.installDebugRouteScenario()
-//            store.buildDebugChosenRoute()
+
+            store.installRouteRenderDemo(
+                .fullDayAllStates
+            )
        
 
         }
@@ -256,6 +347,22 @@ struct DayMapView: View {
                 newAction
             )
         }
+
+        .onChange(
+            of:
+                store.pendingRoadNodeAddRequest
+        ) { _, newRequest in
+
+            guard let newRequest else {
+
+                return
+            }
+
+            roadNodeAddRequest =
+                newRequest
+
+            store.consumePendingRoadNodeAddRequest()
+        }
         
         .onChange(
             of:
@@ -311,12 +418,41 @@ struct DayMapView: View {
                             id:
                                 node.id
                         )
-                    }
+                    },
+                    onActivityAction:
+                        onActivityAction,
+                    isActivityOnChosenPath:
+                        isNodeOnChosenPath(
+                            node.id
+                        ),
+                    onUserAction:
+                        onUserAction
                 )
                 
             }
         }
         
+        .fullScreenCover(
+            item:
+                $presentedPostNodeID
+        ) { nodeID in
+
+            if let node =
+                store.gameNode(
+                    id:
+                        nodeID
+                )
+            {
+
+                GameNodePostView(
+                    node:
+                        node,
+                    onAction:
+                        onPostAction
+                )
+            }
+        }
+
         .fullScreenCover(
             item:
                 $presentedMediaNodeID
@@ -329,25 +465,30 @@ struct DayMapView: View {
                 )
             {
 
-                GameNodeEditorView(
+                GameNodeMediaView(
+                    node:
+                        node
+                )
+            }
+        }
+        
+        .fullScreenCover(
+            item:
+                $presentedHyperlinkNodeID
+        ) { nodeID in
+
+            if let node =
+                store.gameNode(
+                    id:
+                        nodeID
+                )
+            {
+
+                GameNodeHyperlinkView(
                     node:
                         node,
-                    roadGraph:
-                        store.roadGraph,
-                    onSave: { updatedNode in
-
-                        store.updateGameNode(
-                            updatedNode
-                        )
-
-                    },
-                    onDelete: {
-
-                        store.deleteGameNode(
-                            id:
-                                node.id
-                        )
-                    }
+                    onAction:
+                        onHyperlinkAction
                 )
             }
         }
@@ -430,25 +571,6 @@ struct DayMapView: View {
 
 
 // =====================================================
-// MARK: - Selection Helpers
-// =====================================================
-
-private extension DayMapView {
-
-    var hasRoadSelection: Bool {
-
-        store.selection
-            .selectedRoadEdgeID != nil
-
-        ||
-
-        store.selection
-            .selectedRoadVertexID != nil
-    }
-}
-
-
-// =====================================================
 // MARK: - Top HUD
 // =====================================================
 
@@ -469,20 +591,86 @@ private extension DayMapView {
                         3
                 ) {
                     
-                    Button(
-                        "Install Test Data"
+                    #if DEBUG
+                    Menu(
+                        "Route Render Tests"
                     ) {
 
-                        store.installDebugRouteScenario()
+                        Button(
+                            "Full Day — All States"
+                        ) {
+
+                            _ = store.installRouteRenderDemo(
+                                .fullDayAllStates
+                            )
+
+                            syncRouteLayers()
+                        }
+
+
+                        Divider()
+
+
+                        Button(
+                            "All States — 12:45 PM"
+                        ) {
+
+                            _ = store.installRouteRenderDemo(
+                                .balancedMixed
+                            )
+
+                            syncRouteLayers()
+                        }
+
+
+                        Button(
+                            "Future Only — 8:00 AM"
+                        ) {
+
+                            _ = store.installRouteRenderDemo(
+                                .futureOnly
+                            )
+
+                            syncRouteLayers()
+                        }
+
+
+                        Button(
+                            "Early Mix — 10:00 AM"
+                        ) {
+
+                            _ = store.installRouteRenderDemo(
+                                .earlyMixed
+                            )
+
+                            syncRouteLayers()
+                        }
+
+
+                        Button(
+                            "Late Mix — 3:15 PM"
+                        ) {
+
+                            _ = store.installRouteRenderDemo(
+                                .lateMixed
+                            )
+
+                            syncRouteLayers()
+                        }
+
+
+                        Button(
+                            "Completed Only — 5:00 PM"
+                        ) {
+
+                            _ = store.installRouteRenderDemo(
+                                .completedOnly
+                            )
+
+                            syncRouteLayers()
+                        }
                     }
-
-
-                    Button(
-                        "Build + Commit Test Route"
-                    ) {
-
-                        store.buildDebugChosenRoute()
-                    }
+                    #endif
 
 //                   routeControl
   
@@ -765,38 +953,28 @@ private extension DayMapView {
 
 private extension DayMapView {
 
-    func openHyperlink(
-        _ urlString:
-            String
-    ) {
+    /// The user's chosen path is the route already completed today plus the
+    /// currently selected future route. Alternative-route stops are not part
+    /// of the chosen path until that alternative is selected.
+    func isNodeOnChosenPath(
+        _ nodeID: GameNodeID
+    ) -> Bool {
 
-        guard
-            let url =
-                URL(
-                    string:
-                        urlString
-                ),
-
-            let scheme =
-                url.scheme?
-                    .lowercased(),
-
-            scheme == "http"
-            ||
-            scheme == "https"
-        else {
-
-            return
-        }
-
-
-        openURL(
-            url
-        )
+        store.routeState
+            .completedRoute
+            .reachedNodeIDs
+            .contains(
+                nodeID
+            )
+        ||
+        store.routeState
+            .chosenFutureRoute
+            .stopNodeIDs
+            .contains(
+                nodeID
+            )
     }
-}
 
-private extension DayMapView {
 
     var newNodeInitialCoordinate:
         MapCoordinate {
@@ -821,12 +999,10 @@ private extension DayMapView {
 
         switch action {
 
-        case let .showLabel(
-            nodeID
-        ):
+        case .showPlay:
 
-            presentedNodeID =
-                nodeID
+            socketManager.isShowingPlay =
+                true
 
 
         case let .showUser(
@@ -852,7 +1028,7 @@ private extension DayMapView {
             _
         ):
 
-            presentedNodeID =
+            presentedPostNodeID =
                 nodeID
 
 
@@ -870,7 +1046,7 @@ private extension DayMapView {
             _
         ):
 
-            presentedNodeID =
+            presentedHyperlinkNodeID =
                 nodeID
         }
 
@@ -940,11 +1116,6 @@ private extension DayMapView {
             target:
                 target,
 
-            chosenRoute:
-                store
-                    .routeState
-                    .chosenFutureRoute,
-
             inspectedRoute:
                 inspectedFutureRoute(
                     for:
@@ -956,11 +1127,12 @@ private extension DayMapView {
                     .routeState
                     .completedRoute,
 
-            onChoose:
-                chooseRoute,
+            gameNodes:
+                store
+                    .gameNodes,
 
-            onEditChosenRoute:
-                openExistingRouteBuilder
+            onChoose:
+                chooseRoute
         )
     }
 }
@@ -1040,59 +1212,6 @@ private extension DayMapView {
     }
 }
 
-private extension DayMapView {
-
-    func openExistingRouteBuilder(
-        _ routeID:
-            RouteID
-    ) {
-
-        // =================================================
-        // Make sure the route the inspector referred to
-        // is still the current chosen route.
-        // =================================================
-
-        guard
-            store
-                .routeState
-                .chosenFutureRoute
-                .id
-            ==
-            routeID
-        else {
-
-            return
-        }
-
-
-        let succeeded =
-            store
-                .beginEditingChosenFutureRoute()
-
-
-        guard succeeded else {
-
-            return
-        }
-
-
-        /*
-         RouteInspectorView is itself being dismissed.
-
-         Yield one UI cycle before asking SwiftUI to
-         present the Route Builder sheet.
-        */
-
-        Task { @MainActor in
-
-            await Task.yield()
-
-
-            isShowingRouteBuilder =
-                true
-        }
-    }
-}
 
 private extension DayMapView {
 

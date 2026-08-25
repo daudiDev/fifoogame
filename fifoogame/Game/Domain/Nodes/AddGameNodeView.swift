@@ -2,7 +2,7 @@
 //  AddGameNodeView.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
 
 
@@ -33,19 +33,17 @@ struct AddGameNodeView: View {
 
             List {
 
-                Section {
+                ForEach(
+                    AddGameNodeType.allCases
+                ) { addType in
 
-                    ForEach(
-                        GameNodeKind.allCases,
-                        id:
-                            \.self
-                    ) { kind in
+                    Section {
 
                         NavigationLink {
 
                             NewGameNodeEditorScreen(
-                                kind:
-                                    kind,
+                                addType:
+                                    addType,
                                 initialCoordinate:
                                     initialCoordinate,
                                 roadGraph:
@@ -56,24 +54,24 @@ struct AddGameNodeView: View {
 
                         } label: {
 
-                            GameNodeKindRow(
-                                kind:
-                                    kind
+                            AddGameNodeTypeRow(
+                                addType:
+                                    addType
                             )
                         }
+
+                    } header: {
+
+                        Text(
+                            addType.displayName
+                        )
+
+                    } footer: {
+
+                        Text(
+                            addType.description
+                        )
                     }
-
-                } header: {
-
-                    Text(
-                        "Choose Node Type"
-                    )
-
-                } footer: {
-
-                    Text(
-                        "Choose the type of content you want to place on the day map."
-                    )
                 }
             }
             .navigationTitle(
@@ -101,10 +99,11 @@ struct AddGameNodeView: View {
     }
 }
 
-private struct GameNodeKindRow: View {
 
-    let kind:
-        GameNodeKind
+private struct AddGameNodeTypeRow: View {
+
+    let addType:
+        AddGameNodeType
 
 
     var body: some View {
@@ -116,16 +115,30 @@ private struct GameNodeKindRow: View {
 
             Image(
                 systemName:
-                    kind.systemImageName
+                    addType.systemImageName
             )
             .font(
-                .title2
+                .system(
+                    size:
+                        20,
+                    weight:
+                        .semibold
+                )
             )
             .frame(
                 width:
-                    36,
+                    40,
                 height:
-                    36
+                    40
+            )
+            .background(
+                Circle()
+                    .fill(
+                        .secondary
+                            .opacity(
+                                0.12
+                            )
+                    )
             )
 
 
@@ -137,7 +150,7 @@ private struct GameNodeKindRow: View {
             ) {
 
                 Text(
-                    kind.displayName
+                    "Add \(addType.displayName)"
                 )
                 .font(
                     .headline
@@ -145,7 +158,7 @@ private struct GameNodeKindRow: View {
 
 
                 Text(
-                    kind.description
+                    addType.backingModelDescription
                 )
                 .font(
                     .caption
@@ -165,7 +178,12 @@ private struct GameNodeKindRow: View {
     }
 }
 
+
 private struct NewGameNodeEditorScreen: View {
+
+    let addType:
+        AddGameNodeType
+
 
     let roadGraph:
         RoadGraph
@@ -181,11 +199,15 @@ private struct NewGameNodeEditorScreen: View {
 
 
     init(
-        kind: GameNodeKind,
+        addType: AddGameNodeType,
         initialCoordinate: MapCoordinate,
         roadGraph: RoadGraph,
         onAdd: @escaping (GameMapNode) -> Void
     ) {
+
+        self.addType =
+            addType
+
 
         self.roadGraph =
             roadGraph
@@ -199,8 +221,8 @@ private struct NewGameNodeEditorScreen: View {
             State(
                 initialValue:
                     GameNodeFactory.make(
-                        kind:
-                            kind,
+                        addType:
+                            addType,
                         coordinate:
                             initialCoordinate
                     )
@@ -220,7 +242,7 @@ private struct NewGameNodeEditorScreen: View {
                     .issues
         )
         .navigationTitle(
-            "New \(draft.content.kind.displayName)"
+            "New \(addType.displayName)"
         )
         .navigationBarTitleDisplayMode(
             .inline
@@ -242,6 +264,7 @@ private struct NewGameNodeEditorScreen: View {
 
                         return
                     }
+
 
                     let normalized =
                         GameNodeNormalizer
@@ -267,8 +290,6 @@ private struct NewGameNodeEditorScreen: View {
                     onAdd(
                         normalized
                     )
-                    
-                    
                 }
                 .fontWeight(
                     .semibold
@@ -280,6 +301,7 @@ private struct NewGameNodeEditorScreen: View {
         }
     }
 }
+
 
 private extension NewGameNodeEditorScreen {
 

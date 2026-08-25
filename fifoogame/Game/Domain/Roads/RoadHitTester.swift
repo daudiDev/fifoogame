@@ -2,9 +2,15 @@
 //  RoadHitTester.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/22/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
 
+//  Cartesian road hit testing.
+//
+//  A successful hit now resolves the user's touch onto the semantic road
+//  geometry. This gives callers the exact time/progress coordinate of the
+//  road/intersection instead of only identifying the road element.
+//
 
 import Foundation
 import CoreGraphics
@@ -17,11 +23,15 @@ struct RoadHitTester {
         Sendable {
 
         case vertex(
-            RoadVertexID
+            id: RoadVertexID,
+            worldPoint: WorldPoint,
+            mapCoordinate: MapCoordinate
         )
 
         case edge(
-            RoadEdgeID
+            id: RoadEdgeID,
+            worldPoint: WorldPoint,
+            mapCoordinate: MapCoordinate
         )
     }
 
@@ -46,8 +56,7 @@ struct RoadHitTester {
 
 
         // Compatibility fallback for injected/test graphs while the rest of
-        // the app migrates. It intentionally uses one uniform road width;
-        // the old highway/roundabout/cul-de-sac width rules are gone.
+        // the app uses the deterministic Cartesian road grid.
         return genericHitTest(
             at:
                 point,
@@ -93,12 +102,8 @@ private extension RoadHitTester {
             + extraTolerance
 
 
-        // -------------------------------------------------
-        // Reject taps completely outside the semantic day.
-        // Horizontal streets at 00:00 and 24:00 are valid,
-        // so include the road/touch threshold around them.
-        // -------------------------------------------------
-
+        // Horizontal streets at 00:00 and 24:00 are valid, so include the
+        // road/touch threshold around the semantic day bounds.
         guard
             point.y
                 <= GridMapGeometry.dayTopY
@@ -174,9 +179,6 @@ private extension RoadHitTester {
 
         // -------------------------------------------------
         // Intersection first.
-        //
-        // The visual intersection is the overlap of the two
-        // wide road corridors, so use the same geometry here.
         // -------------------------------------------------
 
         if
@@ -200,10 +202,15 @@ private extension RoadHitTester {
                     )
 
 
-            if graph.vertex(id: vertexID) != nil {
+            if let vertex =
+                graph.vertex(
+                    id:
+                        vertexID
+                )
+            {
 
-                return .vertex(
-                    vertexID
+                return resolvedVertexHit(
+                    vertex
                 )
             }
         }
@@ -211,6 +218,9 @@ private extension RoadHitTester {
 
         // -------------------------------------------------
         // Horizontal road section.
+        //
+        // Resolve the user's touch onto the road centerline before turning
+        // the point into semantic time/progress coordinates.
         // -------------------------------------------------
 
         if isInsideHorizontalRoad {
@@ -236,11 +246,21 @@ private extension RoadHitTester {
                     )
 
 
-            if graph.edge(id: edgeID) != nil {
+            if let edge =
+                graph.edge(
+                    id:
+                        edgeID
+                ),
+               let hit = resolvedEdgeHit(
+                    edge,
+                    tapPoint:
+                        point,
+                    graph:
+                        graph
+               )
+            {
 
-                return .edge(
-                    edgeID
-                )
+                return hit
             }
         }
 
@@ -284,11 +304,21 @@ private extension RoadHitTester {
                     )
 
 
-            if graph.edge(id: edgeID) != nil {
+            if let edge =
+                graph.edge(
+                    id:
+                        edgeID
+                ),
+               let hit = resolvedEdgeHit(
+                    edge,
+                    tapPoint:
+                        point,
+                    graph:
+                        graph
+               )
+            {
 
-                return .edge(
-                    edgeID
-                )
+                return hit
             }
         }
 
@@ -353,175 +383,164 @@ private extension RoadHitTester {
 
         if let bestVertex {
 
-            return .vertex(
-                bestVertex.id
+            return resolvedVertexHit(
+                bestVertex
             )
         }
 
 
-        // Edges second.
+        // Edges second. Keep the closest projected point rather than the raw
+        // touch point so callers receive a coordinate on the road itself.
+        let tapWorldPoint =
+            WorldPoint(
+                x:
+                    Double(point.x),
+                y:
+                    Double(point.y)
+            )
+
         var bestEdge: RoadEdge?
-        var bestEdgeDistance =
-            CGFloat.greatestFiniteMagnitude
+        var bestProjection: RoadEdgeProjection?
 
 
         for edge in graph.edges {
 
             guard
                 edge.attributes.isTraversable,
-                edge.travelDirection != .closed
+                edge.travelDirection != .closed,
+                let projection =
+                    RoadEdgeGeometry
+                        .projection(
+                            of:
+                                tapWorldPoint,
+                            onto:
+                                edge,
+                            graph:
+                                graph
+                        ),
+                projection.distance
+                    <= Double(threshold)
             else {
 
                 continue
             }
 
 
-            let sampled =
-                RoadEdgeGeometry
-                    .sampledPoints(
-                        for:
-                            edge,
-                        graph:
-                            graph
-                    )
-                    .map(\.cgPoint)
+            if
+                bestProjection == nil
+                || projection.distance
+                    < bestProjection!.distance
+            {
 
-
-            guard sampled.count >= 2 else {
-                continue
+                bestEdge = edge
+                bestProjection = projection
             }
-
-
-            let distance =
-                distance(
-                    from:
-                        point,
-                    toPolyline:
-                        sampled
-                )
-
-
-            guard
-                distance <= threshold,
-                distance < bestEdgeDistance
-            else {
-
-                continue
-            }
-
-
-            bestEdgeDistance = distance
-            bestEdge = edge
         }
 
 
-        guard let bestEdge else {
+        guard
+            let bestEdge,
+            let bestProjection
+        else {
+
             return nil
         }
 
 
-        return .edge(
-            bestEdge.id
+        return resolvedEdgeHit(
+            edgeID:
+                bestEdge.id,
+            projectedWorldPoint:
+                bestProjection.point
         )
     }
 }
 
 
 // =====================================================
-// MARK: - Geometry Helpers
+// MARK: - Resolved Hit Helpers
 // =====================================================
 
 private extension RoadHitTester {
 
-    func distance(
-        from point: CGPoint,
-        toPolyline points: [CGPoint]
-    ) -> CGFloat {
+    func resolvedVertexHit(
+        _ vertex: RoadVertex
+    ) -> Hit {
 
-        guard points.count >= 2 else {
-            return .greatestFiniteMagnitude
-        }
+        let worldPoint =
+            vertex.worldPoint
 
-
-        var best =
-            CGFloat.greatestFiniteMagnitude
-
-
-        for index in 0..<(points.count - 1) {
-
-            best =
-                min(
-                    best,
-                    distance(
-                        from:
-                            point,
-                        toSegmentFrom:
-                            points[index],
-                        to:
-                            points[index + 1]
+        return .vertex(
+            id:
+                vertex.id,
+            worldPoint:
+                worldPoint,
+            mapCoordinate:
+                MapCoordinateConverter
+                    .mapCoordinate(
+                        for:
+                            worldPoint
                     )
-                )
-        }
-
-
-        return best
+        )
     }
 
 
-    func distance(
-        from point: CGPoint,
-        toSegmentFrom start: CGPoint,
-        to end: CGPoint
-    ) -> CGFloat {
+    func resolvedEdgeHit(
+        _ edge: RoadEdge,
+        tapPoint: CGPoint,
+        graph: RoadGraph
+    ) -> Hit? {
 
-        let dx =
-            end.x - start.x
-
-        let dy =
-            end.y - start.y
-
-        let lengthSquared =
-            dx * dx
-            + dy * dy
-
-
-        guard lengthSquared > 0 else {
-
-            return hypot(
-                point.x - start.x,
-                point.y - start.y
+        let tapWorldPoint =
+            WorldPoint(
+                x:
+                    Double(tapPoint.x),
+                y:
+                    Double(tapPoint.y)
             )
+
+
+        guard let projection =
+            RoadEdgeGeometry
+                .projection(
+                    of:
+                        tapWorldPoint,
+                    onto:
+                        edge,
+                    graph:
+                        graph
+                )
+        else {
+
+            return nil
         }
 
 
-        let rawT =
-            (
-                (point.x - start.x) * dx
-                + (point.y - start.y) * dy
-            )
-            / lengthSquared
-
-        let t =
-            min(
-                max(
-                    rawT,
-                    0
-                ),
-                1
-            )
-
-        let projected =
-            CGPoint(
-                x:
-                    start.x + dx * t,
-                y:
-                    start.y + dy * t
-            )
+        return resolvedEdgeHit(
+            edgeID:
+                edge.id,
+            projectedWorldPoint:
+                projection.point
+        )
+    }
 
 
-        return hypot(
-            point.x - projected.x,
-            point.y - projected.y
+    func resolvedEdgeHit(
+        edgeID: RoadEdgeID,
+        projectedWorldPoint: WorldPoint
+    ) -> Hit {
+
+        .edge(
+            id:
+                edgeID,
+            worldPoint:
+                projectedWorldPoint,
+            mapCoordinate:
+                MapCoordinateConverter
+                    .mapCoordinate(
+                        for:
+                            projectedWorldPoint
+                    )
         )
     }
 }

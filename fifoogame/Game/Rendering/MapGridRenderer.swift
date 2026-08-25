@@ -736,6 +736,7 @@ private extension MapGridRenderer {
 
         node.strokeColor =
             MapVisualTheme.roadDashColor
+        
 
         node.lineWidth =
             GridMapConfiguration.roadDashLineWidthWorld

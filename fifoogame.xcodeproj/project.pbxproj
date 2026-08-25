@@ -39,11 +39,11 @@
 		274E99A4303803520075F87C /* Exceptions for "fifoogame" folder in "fifoogameTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				"App/App OverLay/Calendar/ActivityDetailsView.swift",
-				"App/App OverLay/Calendar/CalendarUserRequestImagesRow.swift",
-				"App/App OverLay/Calendar/CalendarView.swift",
-				"App/App OverLay/Calendar/EventItemUserImagesRow.swift",
-				"App/App OverLay/Calendar/InfiniteDayCalendarView.swift",
+				App/Calendar/ActivityDetailsView.swift,
+				App/Calendar/CalendarUserRequestImagesRow.swift,
+				App/Calendar/CalendarView.swift,
+				App/Calendar/EventItemUserImagesRow.swift,
+				App/Calendar/InfiniteDayCalendarView.swift,
 				App/SocketManager.swift,
 				"FIfoo Play/Play Views/Media Views/ExerciseInstructionsView.swift",
 				"FIfoo Play/Play Views/Media Views/FullScreenImageView.swift",

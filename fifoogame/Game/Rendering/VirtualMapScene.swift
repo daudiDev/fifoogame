@@ -1,10 +1,9 @@
 //
-//  VirtualMapScene 2.swift
+//  VirtualMapScene.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/22/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
-
 
 import SpriteKit
 
@@ -869,12 +868,10 @@ extension VirtualMapScene {
         // Road Edge / Vertex Selection
         // =================================================
 
-        roadSelectionRenderer.render(
-            selection:
-                selection,
-            graph:
-                roadGraph
-        )
+        // Road/intersection taps are now creation anchors, not selections.
+        // Keep the legacy renderer allocated for source compatibility, but do
+        // not draw a road-selection halo/color change.
+        roadSelectionRenderer.clear()
 
 
         // =================================================
@@ -1407,7 +1404,9 @@ private extension VirtualMapScene {
         switch roadHit {
 
         case let .vertex(
-            vertexID
+            id: vertexID,
+            worldPoint: resolvedWorldPoint,
+            mapCoordinate: resolvedMapCoordinate
         ):
 
             emit(
@@ -1415,15 +1414,17 @@ private extension VirtualMapScene {
                     vertexID:
                         vertexID,
                     worldPoint:
-                        worldPoint,
+                        resolvedWorldPoint,
                     mapCoordinate:
-                        mapCoordinate
+                        resolvedMapCoordinate
                 )
             )
 
 
         case let .edge(
-            edgeID
+            id: edgeID,
+            worldPoint: resolvedWorldPoint,
+            mapCoordinate: resolvedMapCoordinate
         ):
 
             emit(
@@ -1431,9 +1432,9 @@ private extension VirtualMapScene {
                     edgeID:
                         edgeID,
                     worldPoint:
-                        worldPoint,
+                        resolvedWorldPoint,
                     mapCoordinate:
-                        mapCoordinate
+                        resolvedMapCoordinate
                 )
             )
 
@@ -1553,3 +1554,4 @@ private extension VirtualMapScene {
         )
     }
 }
+

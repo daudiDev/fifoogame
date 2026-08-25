@@ -2,8 +2,9 @@
 //  GameNodeRenderer.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/22/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
+
 
 
 import SpriteKit
@@ -12,11 +13,14 @@ import UIKit
 
 @MainActor
 final class GameNodeRenderer {
-    
+
     private enum GameNodeVisualMetrics {
 
         static let markerRadius: CGFloat =
             28
+
+        static let markerImageRadius: CGFloat =
+            25
 
         static let markerBorderWidth: CGFloat =
             2
@@ -28,14 +32,48 @@ final class GameNodeRenderer {
             3
 
         static let titleFontSize: CGFloat =
-            16
+            15
 
-        static let titleYOffset: CGFloat =
-            -30
+        static let timeFontSize: CGFloat =
+            12
 
-        static let symbolPointSize: CGFloat =
-            24
+        // The title and time now live inside one compact map-style
+        // caption plate. Keeping the plate just below the marker makes
+        // the node readable over roads, route strokes, and land islands.
+        static let captionTopYOffset: CGFloat =
+            -34
+
+        static let captionHorizontalPadding: CGFloat =
+            10
+
+        static let captionVerticalPadding: CGFloat =
+            6
+
+        static let captionLineSpacing: CGFloat =
+            3
+
+        static let captionMinimumWidth: CGFloat =
+            68
+
+        // Hard visual width for a map-node title. Titles wider than this
+        // are shortened with an ellipsis before they reach SKLabelNode,
+        // so the text can never draw outside the caption plate.
+        static let captionMaximumTextWidth: CGFloat =
+            120
+
+        static let captionCornerRadius: CGFloat =
+            9
+
+        static let captionBorderWidth: CGFloat =
+            1
+
+        static let captionShadowOffset =
+            CGPoint(
+                x: 1.5,
+                y: -2
+            )
     }
+
 
     // =====================================================
     // MARK: - Root
@@ -57,20 +95,8 @@ final class GameNodeRenderer {
     // MARK: - Image Loading
     // =====================================================
 
-    /*
-     Cache SpriteKit textures rather than repeatedly
-     rebuilding them every time nodes are rendered.
-     */
-
     private var textureCache:
         [String: SKTexture] = [:]
-
-
-    /*
-     Remote image downloads are associated with the
-     GameNodeID so they can be cancelled if the node
-     hierarchy is rebuilt.
-     */
 
     private var remoteImageTasks:
         [GameNodeID: Task<Void, Never>] = [:]
@@ -85,21 +111,16 @@ final class GameNodeRenderer {
         containerNode.name =
             "gameNodeRenderer"
 
-
         containerNode.isHidden =
             false
 
-
         containerNode.alpha =
             1
-        
-        // Step 7: the scene-level nodeLayer owns the global z-order.
-        // Keep this renderer local to its parent so the hierarchy remains:
-        // roads < route selection < routes < game nodes.
+
+        // Scene-level nodeLayer owns the global z-order.
         containerNode.zPosition =
             0
     }
-    
 
 
     // =====================================================
@@ -107,49 +128,37 @@ final class GameNodeRenderer {
     // =====================================================
 
     func render(
-        nodes:
-            [GameMapNode],
-        roadGraph:
-            RoadGraph
+        nodes: [GameMapNode],
+        roadGraph: RoadGraph
     ) {
 
         clear()
-
 
         for gameNode in nodes {
 
             guard
                 gameNode.isEnabled,
-
                 let worldPoint =
                     GameNodePlacementResolver
                         .worldPoint(
-                            for:
-                                gameNode,
-                            graph:
-                                roadGraph
+                            for: gameNode,
+                            graph: roadGraph
                         )
             else {
-
                 continue
             }
 
-
             let root =
                 makeNode(
-                    for:
-                        gameNode
+                    for: gameNode
                 )
-
 
             root.position =
                 worldPoint.cgPoint
 
-
             containerNode.addChild(
                 root
             )
-
 
             renderedNodes[
                 gameNode.id
@@ -164,8 +173,7 @@ final class GameNodeRenderer {
     // =====================================================
 
     func renderSelection(
-        selectedNodeID:
-            GameNodeID?
+        selectedNodeID: GameNodeID?
     ) {
 
         for (
@@ -173,17 +181,11 @@ final class GameNodeRenderer {
             root
         ) in renderedNodes {
 
-            let isSelected =
-                nodeID ==
-                selectedNodeID
-
-
             root.childNode(
-                withName:
-                    "selectionHalo"
+                withName: "selectionHalo"
             )?
             .isHidden =
-                !isSelected
+                nodeID != selectedNodeID
         }
     }
 
@@ -196,10 +198,8 @@ final class GameNodeRenderer {
 
         cancelRemoteImageTasks()
 
-
         containerNode
             .removeAllChildren()
-
 
         renderedNodes
             .removeAll()
@@ -217,6 +217,7 @@ final class GameNodeRenderer {
     }
 }
 
+
 // =====================================================
 // MARK: - Node Construction
 // =====================================================
@@ -224,64 +225,45 @@ final class GameNodeRenderer {
 private extension GameNodeRenderer {
 
     func makeNode(
-        for gameNode:
-            GameMapNode
+        for gameNode: GameMapNode
     ) -> SKNode {
 
         let root =
             SKNode()
-        
-        root.zPosition = 0
 
         root.name =
             "game.node.\(gameNode.id.rawValue.uuidString)"
 
-
-        root.isHidden =
-            false
-
-
-        root.alpha =
-            1
-
+        root.zPosition =
+            0
 
         root.userData =
             NSMutableDictionary(
                 dictionary: [
-
                     "gameNodeID":
-                        gameNode
-                            .id
-                            .rawValue
-                            .uuidString,
-
+                        gameNode.id.rawValue.uuidString,
                     "gameNodeKind":
-                        gameNode
-                            .content
-                            .kind
-                            .rawValue
+                        gameNode.content.kind.rawValue,
+                    "gameNodeTime":
+                        gameNode.time.secondsFromMidnight
                 ]
             )
 
 
         // =============================================
-        // Map-Style Chrome
+        // Map-style chrome
         // =============================================
 
         let chrome =
             GameNodeMarkerChrome.make(
-                isSelected:
-                    false
+                isSelected: false
             )
-
 
         chrome.name =
             "markerChrome"
 
-
         chrome.zPosition =
             -2
-
 
         root.addChild(
             chrome
@@ -289,60 +271,46 @@ private extension GameNodeRenderer {
 
 
         // =============================================
-        // Selection Halo
+        // Selection halo
         // =============================================
 
-        let halo =
+        root.addChild(
             makeSelectionHalo()
-
-
-        root.addChild(
-            halo
         )
 
 
         // =============================================
-        // Marker
+        // Circular image marker
         // =============================================
 
-        let marker =
-            makeMarker()
-
-
-        root.addChild(
-            marker
-        )
-
-
-        // =============================================
-        // Image / Symbol
-        // =============================================
-
-        configureMarkerContent(
-            gameNode:
-                gameNode,
-            root:
-                root,
-            marker:
-                marker
-        )
-
-
-        // =============================================
-        // Title
-        // =============================================
-
-        let title =
-            makeTitleLabel(
-                text:
-                    gameNode
-                        .content
-                        .title
+        let imageSprite =
+            makeCircularImageNode(
+                for: gameNode.content.kind
             )
 
+        root.addChild(
+            imageSprite.cropNode
+        )
 
         root.addChild(
-            title
+            makeMarkerBorder()
+        )
+
+        configureImage(
+            for: gameNode,
+            sprite: imageSprite.sprite
+        )
+
+
+        // =============================================
+        // Title + time caption
+        // =============================================
+
+        root.addChild(
+            makeCaptionNode(
+                title: gameNode.content.title,
+                time: gameNode.time.displayClockString
+            )
         )
 
 
@@ -350,277 +318,631 @@ private extension GameNodeRenderer {
     }
 }
 
+
 // =====================================================
 // MARK: - Marker Components
 // =====================================================
 
 private extension GameNodeRenderer {
 
-    func makeSelectionHalo()
-        -> SKShapeNode {
+    func makeSelectionHalo() -> SKShapeNode {
 
         let halo =
             SKShapeNode(
                 circleOfRadius:
-                    GameNodeVisualMetrics
-                                   .selectionRadius
+                    GameNodeVisualMetrics.selectionRadius
             )
-
 
         halo.name =
             "selectionHalo"
 
-
         halo.fillColor =
-            MapVisualTheme
-                .roadSelectionHaloColor
-
+            MapVisualTheme.roadSelectionHaloColor
 
         halo.strokeColor =
-            MapVisualTheme
-                .roadSelectionColor
-
+            MapVisualTheme.roadSelectionColor
 
         halo.lineWidth =
-            4
-
+            GameNodeVisualMetrics.selectionBorderWidth
 
         halo.isHidden =
             true
 
-
-        halo.zPosition = 1
-
+        halo.zPosition =
+            1
 
         return halo
     }
 
 
-    func makeMarker()
-        -> SKShapeNode {
+    func makeMarkerBorder() -> SKShapeNode {
 
-        let marker =
+        let border =
             SKShapeNode(
                 circleOfRadius:
-                    GameNodeVisualMetrics
-                                   .markerRadius
+                    GameNodeVisualMetrics.markerRadius
             )
 
+        border.name =
+            "markerBorder"
 
-        marker.name =
-            "marker"
+        border.fillColor =
+            .clear
 
+        border.strokeColor =
+            MapVisualTheme.nodeBorderColor
 
-        marker.fillColor =
-            MapVisualTheme
-                .nodeFillColor
+        border.lineWidth =
+            GameNodeVisualMetrics.markerBorderWidth
 
+        border.zPosition =
+            4
 
-        marker.strokeColor =
-            MapVisualTheme
-                .nodeBorderColor
-
-
-        marker.lineWidth =
-                GameNodeVisualMetrics
-                    .markerBorderWidth
-
-
-        marker.zPosition = 2
-
-
-        return marker
+        return border
     }
 
 
-    func makeTitleLabel(
-        text:
-            String
-    ) -> SKLabelNode {
+    func makeCircularImageNode(
+        for kind: GameNodeKind
+    ) -> (
+        cropNode: SKCropNode,
+        sprite: SKSpriteNode
+    ) {
 
-        let title =
+        let cropNode =
+            SKCropNode()
+
+        cropNode.name =
+            "markerImageCrop"
+
+        cropNode.zPosition =
+            3
+
+        let mask =
+            SKShapeNode(
+                circleOfRadius:
+                    GameNodeVisualMetrics.markerImageRadius
+            )
+
+        mask.fillColor =
+            .white
+
+        mask.strokeColor =
+            .clear
+
+        cropNode.maskNode =
+            mask
+
+        let placeholder =
+            placeholderTexture(
+                for: kind
+            )
+
+        let sprite =
+            SKSpriteNode(
+                texture: placeholder
+            )
+
+        sprite.name =
+            "markerImageSprite"
+
+        sprite.anchorPoint =
+            CGPoint(
+                x: 0.5,
+                y: 0.5
+            )
+
+        apply(
+            texture: placeholder,
+            to: sprite
+        )
+
+        cropNode.addChild(
+            sprite
+        )
+
+        return (
+            cropNode,
+            sprite
+        )
+    }
+
+
+    func makeCaptionNode(
+        title: String,
+        time: String
+    ) -> SKNode {
+
+        let root =
+            SKNode()
+
+        root.name =
+            "nodeCaption"
+
+        root.position =
+            CGPoint(
+                x: 0,
+                y: GameNodeVisualMetrics.captionTopYOffset
+            )
+
+        root.zPosition =
+            5
+
+
+        // =============================================
+        // Title
+        // =============================================
+
+        let titleLabel =
             SKLabelNode(
                 fontNamed:
                     "HelveticaNeue-Medium"
             )
 
-
-        title.name =
+        titleLabel.name =
             "nodeTitle"
 
+        titleLabel.fontSize =
+            GameNodeVisualMetrics.titleFontSize
 
-        title.text =
-            text
+        titleLabel.text =
+            fittedCaptionTitle(
+                title
+            )
+
+        titleLabel.fontColor =
+            MapVisualTheme.nodeCaptionTitleColor
+
+        titleLabel.horizontalAlignmentMode =
+            .center
+
+        titleLabel.verticalAlignmentMode =
+            .center
+
+        titleLabel.numberOfLines =
+            1
+
+        titleLabel.lineBreakMode =
+            .byTruncatingTail
+
+        titleLabel.preferredMaxLayoutWidth =
+            GameNodeVisualMetrics.captionMaximumTextWidth
 
 
-        title.fontSize =
-            GameNodeVisualMetrics
-                   .titleFontSize
+        // =============================================
+        // Time
+        // =============================================
 
+        let timeLabel =
+            SKLabelNode(
+                fontNamed:
+                    "HelveticaNeue-Medium"
+            )
 
-        title.fontColor =
-            MapVisualTheme
-                .nodeLabelColor
+        timeLabel.name =
+            "nodeTime"
 
+        timeLabel.text =
+            time
 
-        title.horizontalAlignmentMode =
+        timeLabel.fontSize =
+            GameNodeVisualMetrics.timeFontSize
+
+        timeLabel.fontColor =
+            MapVisualTheme.nodeCaptionTimeColor
+
+        timeLabel.horizontalAlignmentMode =
+            .center
+
+        timeLabel.verticalAlignmentMode =
             .center
 
 
-        title.verticalAlignmentMode =
-            .top
+        // =============================================
+        // Plate sizing
+        // =============================================
+
+        let titleHeight =
+            max(
+                titleLabel.frame.height,
+                GameNodeVisualMetrics.titleFontSize
+            )
+
+        let timeHeight =
+            max(
+                timeLabel.frame.height,
+                GameNodeVisualMetrics.timeFontSize
+            )
+
+        let contentWidth =
+            min(
+                max(
+                    titleLabel.frame.width,
+                    timeLabel.frame.width
+                ),
+                GameNodeVisualMetrics.captionMaximumTextWidth
+            )
+
+        let plateWidth =
+            max(
+                GameNodeVisualMetrics.captionMinimumWidth,
+                contentWidth
+                + (
+                    GameNodeVisualMetrics.captionHorizontalPadding
+                    * 2
+                )
+            )
+
+        let plateHeight =
+            GameNodeVisualMetrics.captionVerticalPadding
+            + titleHeight
+            + GameNodeVisualMetrics.captionLineSpacing
+            + timeHeight
+            + GameNodeVisualMetrics.captionVerticalPadding
+
+        let plateRect =
+            CGRect(
+                x: -plateWidth / 2,
+                y: -plateHeight,
+                width: plateWidth,
+                height: plateHeight
+            )
 
 
-        title.position =
-            CGPoint(
-                    x: 0,
-                    y:
-                        GameNodeVisualMetrics
-                            .titleYOffset
+        // =============================================
+        // Shadow
+        // =============================================
+
+        let shadowRect =
+            plateRect
+                .offsetBy(
+                    dx: GameNodeVisualMetrics.captionShadowOffset.x,
+                    dy: GameNodeVisualMetrics.captionShadowOffset.y
                 )
 
+        let shadow =
+            SKShapeNode(
+                rect: shadowRect,
+                cornerRadius:
+                    GameNodeVisualMetrics.captionCornerRadius
+            )
 
-        title.zPosition =
-            2
+        shadow.name =
+            "nodeCaptionShadow"
+
+        shadow.fillColor =
+            MapVisualTheme.nodeCaptionShadowColor
+
+        shadow.strokeColor =
+            .clear
+
+        shadow.zPosition =
+            -2
+
+        root.addChild(
+            shadow
+        )
 
 
-        return title
+        // =============================================
+        // Rounded background plate
+        // =============================================
+
+        let background =
+            SKShapeNode(
+                rect: plateRect,
+                cornerRadius:
+                    GameNodeVisualMetrics.captionCornerRadius
+            )
+
+        background.name =
+            "nodeCaptionBackground"
+
+        background.fillColor =
+            MapVisualTheme.nodeCaptionBackgroundColor
+
+        background.strokeColor =
+            MapVisualTheme.nodeCaptionBorderColor
+
+        background.lineWidth =
+            GameNodeVisualMetrics.captionBorderWidth
+
+        background.zPosition =
+            -1
+
+        root.addChild(
+            background
+        )
+
+
+        // =============================================
+        // Label positions
+        // =============================================
+
+        let titleCenterY =
+            -GameNodeVisualMetrics.captionVerticalPadding
+            - (titleHeight / 2)
+
+        titleLabel.position =
+            CGPoint(
+                x: 0,
+                y: titleCenterY
+            )
+
+        let timeCenterY =
+            titleCenterY
+            - (titleHeight / 2)
+            - GameNodeVisualMetrics.captionLineSpacing
+            - (timeHeight / 2)
+
+        timeLabel.position =
+            CGPoint(
+                x: 0,
+                y: timeCenterY
+            )
+
+        titleLabel.zPosition =
+            1
+
+        timeLabel.zPosition =
+            1
+
+        root.addChild(
+            titleLabel
+        )
+
+        root.addChild(
+            timeLabel
+        )
+
+        return root
     }
+
 }
 
+
 // =====================================================
-// MARK: - Marker Content
+// MARK: - Caption Text Fitting
 // =====================================================
 
 private extension GameNodeRenderer {
 
-    func configureMarkerContent(
-        gameNode:
-            GameMapNode,
-        root:
-            SKNode,
-        marker:
-            SKShapeNode
+    /// SpriteKit's `preferredMaxLayoutWidth` is not a reliable hard width
+    /// constraint for a single-line `SKLabelNode`. Measure the title using
+    /// the same UIKit font and shorten it before rendering instead.
+    ///
+    /// This keeps every GameNodeContent title inside the caption plate, even
+    /// for unusually long activity, user, post, media, or hyperlink titles.
+    func fittedCaptionTitle(
+        _ rawTitle: String
+    ) -> String {
+
+        let cleaned =
+            rawTitle
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+        let title =
+            cleaned.isEmpty
+            ? "Untitled"
+            : cleaned
+
+        let font =
+            UIFont(
+                name: "HelveticaNeue-Medium",
+                size: GameNodeVisualMetrics.titleFontSize
+            )
+            ??
+            UIFont.systemFont(
+                ofSize: GameNodeVisualMetrics.titleFontSize,
+                weight: .medium
+            )
+
+        let maximumWidth =
+            GameNodeVisualMetrics.captionMaximumTextWidth
+
+        guard textWidth(
+            title,
+            font: font
+        ) > maximumWidth else {
+
+            return title
+        }
+
+        let ellipsis =
+            "…"
+
+        let characters =
+            Array(
+                title
+            )
+
+        var lowerBound =
+            0
+
+        var upperBound =
+            characters.count
+
+        // Find the greatest prefix that still fits once the ellipsis is
+        // appended. Binary search avoids repeatedly walking a long title.
+        while lowerBound < upperBound {
+
+            let candidateCount =
+                (
+                    lowerBound
+                    + upperBound
+                    + 1
+                )
+                / 2
+
+            let prefix =
+                String(
+                    characters.prefix(
+                        candidateCount
+                    )
+                )
+                .trimmingCharacters(
+                    in: .whitespaces
+                )
+
+            let candidate =
+                prefix
+                + ellipsis
+
+            if textWidth(
+                candidate,
+                font: font
+            ) <= maximumWidth {
+
+                lowerBound =
+                    candidateCount
+
+            } else {
+
+                upperBound =
+                    candidateCount
+                    - 1
+            }
+        }
+
+        let prefix =
+            String(
+                characters.prefix(
+                    lowerBound
+                )
+            )
+            .trimmingCharacters(
+                in: .whitespaces
+            )
+
+        return prefix.isEmpty
+            ? ellipsis
+            : prefix + ellipsis
+    }
+
+
+    func textWidth(
+        _ text: String,
+        font: UIFont
+    ) -> CGFloat {
+
+        ceil(
+            (
+                text as NSString
+            )
+            .size(
+                withAttributes: [
+                    .font: font
+                ]
+            )
+            .width
+        )
+    }
+}
+
+
+// =====================================================
+// MARK: - Image Configuration
+// =====================================================
+
+private extension GameNodeRenderer {
+
+    func configureImage(
+        for gameNode: GameMapNode,
+        sprite: SKSpriteNode
     ) {
+
+        // The marker already contains a type-specific raster placeholder.
+        // Missing images, invalid images, failed network requests, and old
+        // SF-symbol data all intentionally keep that placeholder.
 
         guard let image =
             gameNode.content.image
         else {
-
-            addFallbackSymbol(
-                for:
-                    gameNode.content.kind,
-                to:
-                    root
-            )
-
-
             return
         }
 
-
         switch image {
-
-        // =============================================
-        // Local Asset
-        // =============================================
 
         case let .asset(
             name
         ):
 
-            if let texture =
+            guard let texture =
                 localAssetTexture(
-                    named:
-                        name
+                    named: name
                 )
-            {
-
-                apply(
-                    texture:
-                        texture,
-                    to:
-                        marker
-                )
-
-            } else {
-
-                addFallbackSymbol(
-                    for:
-                        gameNode.content.kind,
-                    to:
-                        root
-                )
+            else {
+                return
             }
 
+            apply(
+                texture: texture,
+                to: sprite
+            )
 
-        // =============================================
-        // SF Symbol
-        // =============================================
-
-        case let .systemSymbol(
-            name
-        ):
-
-            if let texture =
-                systemSymbolTexture(
-                    named:
-                        name
-                )
-            {
-
-                apply(
-                    texture:
-                        texture,
-                    to:
-                        marker
-                )
-
-            } else {
-
-                addFallbackSymbol(
-                    for:
-                        gameNode.content.kind,
-                    to:
-                        root
-                )
-            }
-
-
-        // =============================================
-        // Remote Image
-        // =============================================
 
         case let .remote(
             urlString
         ):
 
-            /*
-             Immediately show a fallback while the
-             remote image downloads.
-             */
-
-            addFallbackSymbol(
-                for:
-                    gameNode.content.kind,
-                to:
-                    root
-            )
-
-
             loadRemoteImage(
-                urlString:
-                    urlString,
-                nodeID:
-                    gameNode.id,
-                root:
-                    root,
-                marker:
-                    marker
+                urlString: urlString,
+                nodeID: gameNode.id,
+                sprite: sprite
             )
+
+
+        case .systemSymbol:
+
+            // Legacy compatibility only. Map nodes no longer render
+            // SF Symbols. The type-specific placeholder remains visible.
+            return
         }
     }
 }
+
+
+// =====================================================
+// MARK: - Placeholder Texture
+// =====================================================
+
+private extension GameNodeRenderer {
+
+    func placeholderTexture(
+        for kind: GameNodeKind
+    ) -> SKTexture {
+
+        let key =
+            "placeholder:\(kind.rawValue)"
+
+        if let cached =
+            textureCache[key] {
+
+            return cached
+        }
+
+        let image =
+            GameNodePlaceholderImage.image(
+                for: kind
+            )
+
+        let texture =
+            SKTexture(
+                image: image
+            )
+
+        texture.filteringMode =
+            .linear
+
+        textureCache[key] =
+            texture
+
+        return texture
+    }
+}
+
 
 // =====================================================
 // MARK: - Local Asset
@@ -629,128 +951,50 @@ private extension GameNodeRenderer {
 private extension GameNodeRenderer {
 
     func localAssetTexture(
-        named name:
-            String
+        named name: String
     ) -> SKTexture? {
 
-        let key =
-            "asset:\(name)"
+        let trimmed =
+            name.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
 
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let key =
+            "asset:\(trimmed)"
 
         if let cached =
             textureCache[key] {
 
             return cached
         }
-
 
         guard let image =
             UIImage(
-                named:
-                    name
+                named: trimmed
             )
         else {
-
             return nil
         }
 
-
         let texture =
             SKTexture(
-                image:
-                    image
+                image: image
             )
-
 
         texture.filteringMode =
             .linear
 
-
         textureCache[key] =
             texture
-
 
         return texture
     }
 }
 
-// =====================================================
-// MARK: - System Symbol
-// =====================================================
-
-private extension GameNodeRenderer {
-
-    func systemSymbolTexture(
-        named name:
-            String
-    ) -> SKTexture? {
-
-        let key =
-            "symbol:\(name)"
-
-
-        if let cached =
-            textureCache[key] {
-
-            return cached
-        }
-
-
-        let configuration =
-            UIImage.SymbolConfiguration(
-                pointSize: GameNodeVisualMetrics
-                               .symbolPointSize,
-                weight:
-                    .semibold
-            )
-
-
-        guard let symbol =
-            UIImage(
-                systemName:
-                    name,
-                withConfiguration:
-                    configuration
-            )
-        else {
-
-            return nil
-        }
-
-
-        /*
-         Convert the template-style SF Symbol
-         into a permanently colored image before
-         giving it to SpriteKit.
-         */
-
-        let coloredSymbol =
-            symbol.withTintColor(
-                MapVisualTheme
-                    .nodeTextColor,
-                renderingMode:
-                    .alwaysOriginal
-            )
-
-
-        let texture =
-            SKTexture(
-                image:
-                    coloredSymbol
-            )
-
-
-        texture.filteringMode =
-            .linear
-
-
-        textureCache[key] =
-            texture
-
-
-        return texture
-    }
-}
 
 // =====================================================
 // MARK: - Remote Image Loading
@@ -759,94 +1003,53 @@ private extension GameNodeRenderer {
 private extension GameNodeRenderer {
 
     func loadRemoteImage(
-        urlString:
-            String,
-        nodeID:
-            GameNodeID,
-        root:
-            SKNode,
-        marker:
-            SKShapeNode
+        urlString: String,
+        nodeID: GameNodeID,
+        sprite: SKSpriteNode
     ) {
 
+        let trimmed =
+            urlString.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
         let cacheKey =
-            "remote:\(urlString)"
-
-
-        // =============================================
-        // Already cached
-        // =============================================
+            "remote:\(trimmed)"
 
         if let cached =
-            textureCache[
-                cacheKey
-            ]
-        {
+            textureCache[cacheKey] {
 
             apply(
-                texture:
-                    cached,
-                to:
-                    marker
+                texture: cached,
+                to: sprite
             )
-
-
-            removeFallbackSymbol(
-                from:
-                    root
-            )
-
 
             return
         }
 
-
-        // =============================================
-        // Validate URL
-        // =============================================
-
-        guard let url =
-            URL(
-                string:
-                    urlString
-            )
+        guard
+            let url = URL(
+                string: trimmed
+            ),
+            let scheme = url.scheme?.lowercased(),
+            scheme == "http" || scheme == "https"
         else {
-
             return
         }
 
-
-        // =============================================
-        // Cancel previous task for same node
-        // =============================================
-
-        remoteImageTasks[
-            nodeID
-        ]?
-        .cancel()
-
-
-        // =============================================
-        // Start image request
-        // =============================================
+        remoteImageTasks[nodeID]?
+            .cancel()
 
         let task =
-            Task { @MainActor [weak self, weak root, weak marker] in
+            Task { @MainActor [weak self, weak sprite] in
 
                 guard let self else {
-
                     return
                 }
 
-
                 defer {
-
-                    self.remoteImageTasks[
-                        nodeID
-                    ] =
-                        nil
+                    self.remoteImageTasks[nodeID] = nil
                 }
-
 
                 do {
 
@@ -854,138 +1057,78 @@ private extension GameNodeRenderer {
                         data,
                         response
                     ) =
-                        try await URLSession
-                            .shared
-                            .data(
-                                from:
-                                    url
-                            )
+                        try await URLSession.shared.data(
+                            from: url
+                        )
 
-
-                    guard
-                        !Task.isCancelled
-                    else {
-
+                    guard !Task.isCancelled else {
                         return
                     }
 
-
-                    // MARK: HTTP status
-
                     if let httpResponse =
-                        response as?
-                            HTTPURLResponse {
+                        response as? HTTPURLResponse {
 
                         guard
-                            (
-                                200...299
-                            )
-                            .contains(
-                                httpResponse
-                                    .statusCode
+                            (200...299).contains(
+                                httpResponse.statusCode
                             )
                         else {
-
                             return
                         }
                     }
 
-
-                    // MARK: Decode Image
-
                     guard let image =
                         UIImage(
-                            data:
-                                data
+                            data: data
                         )
                     else {
-
                         return
                     }
-
-
-                    guard
-                        !Task.isCancelled
-                    else {
-
-                        return
-                    }
-
 
                     let texture =
                         SKTexture(
-                            image:
-                                image
+                            image: image
                         )
-
 
                     texture.filteringMode =
                         .linear
 
-
-                    // MARK: Cache
-
-                    self.textureCache[
-                        cacheKey
-                    ] =
+                    self.textureCache[cacheKey] =
                         texture
 
-
-                    // MARK: Apply
-
                     guard
-                        let root,
-                        let marker
+                        !Task.isCancelled,
+                        let sprite
                     else {
-
                         return
                     }
 
-
                     self.apply(
-                        texture:
-                            texture,
-                        to:
-                            marker
+                        texture: texture,
+                        to: sprite
                     )
-
-
-                    self.removeFallbackSymbol(
-                        from:
-                            root
-                    )
-
 
                 } catch {
-
-                    /*
-                     Keep the fallback symbol if
-                     networking fails.
-                     */
+                    // Keep the type-specific placeholder image.
                 }
             }
 
-
-        remoteImageTasks[
-            nodeID
-        ] =
+        remoteImageTasks[nodeID] =
             task
     }
 
 
     func cancelRemoteImageTasks() {
 
-        for task in
-            remoteImageTasks.values {
-
+        for task in remoteImageTasks.values {
             task.cancel()
         }
-
 
         remoteImageTasks
             .removeAll()
     }
 }
+
 
 // =====================================================
 // MARK: - Texture Application
@@ -994,152 +1137,45 @@ private extension GameNodeRenderer {
 private extension GameNodeRenderer {
 
     func apply(
-        texture:
-            SKTexture,
-        to marker:
-            SKShapeNode
+        texture: SKTexture,
+        to sprite: SKSpriteNode
     ) {
 
-        marker.fillTexture =
+        sprite.texture =
             texture
 
+        let sourceSize =
+            texture.size()
 
-        /*
-         fillTexture is blended with fillColor.
-
-         White preserves the texture's original
-         colors.
-         */
-
-        marker.fillColor =
-            .white
-    }
-}
-
-// =====================================================
-// MARK: - Fallback Symbol
-// =====================================================
-
-private extension GameNodeRenderer {
-
-    func addFallbackSymbol(
-        for kind:
-            GameNodeKind,
-        to root:
-            SKNode
-    ) {
-
-        /*
-         Prevent duplicates if this function
-         happens to be called more than once.
-         */
+        let diameter =
+            GameNodeVisualMetrics.markerImageRadius
+            * 2
 
         guard
-            root.childNode(
-                withName:
-                    "fallbackSymbol"
-            )
-            ==
-            nil
+            sourceSize.width > 0,
+            sourceSize.height > 0
         else {
+
+            sprite.size =
+                CGSize(
+                    width: diameter,
+                    height: diameter
+                )
 
             return
         }
 
-
-        let symbol =
-            SKLabelNode(
-                fontNamed:
-                    "HelveticaNeue-Bold"
+        // Aspect-fill the circular crop without distorting the source image.
+        let scale =
+            max(
+                diameter / sourceSize.width,
+                diameter / sourceSize.height
             )
 
-
-        symbol.name =
-            "fallbackSymbol"
-
-
-        symbol.text =
-            fallbackSymbolText(
-                for:
-                    kind
+        sprite.size =
+            CGSize(
+                width: sourceSize.width * scale,
+                height: sourceSize.height * scale
             )
-
-
-        symbol.fontSize =
-            22
-
-
-        symbol.fontColor =
-            MapVisualTheme
-                .nodeTextColor
-
-
-        symbol.horizontalAlignmentMode =
-            .center
-
-
-        symbol.verticalAlignmentMode =
-            .center
-
-
-        symbol.zPosition =
-            2
-
-
-        root.addChild(
-            symbol
-        )
-    }
-
-
-    func removeFallbackSymbol(
-        from root:
-            SKNode
-    ) {
-
-        root.childNode(
-            withName:
-                "fallbackSymbol"
-        )?
-        .removeFromParent()
-    }
-
-
-    func fallbackSymbolText(
-        for kind:
-            GameNodeKind
-    ) -> String {
-
-        switch kind {
-
-        case .label:
-
-            return "•"
-
-
-        case .user:
-
-            return "U"
-
-
-        case .activity:
-
-            return "A"
-
-
-        case .post:
-
-            return "P"
-
-
-        case .media:
-
-            return "▶"
-
-
-        case .hyperlink:
-
-            return "↗"
-        }
     }
 }

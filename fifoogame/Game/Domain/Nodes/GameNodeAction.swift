@@ -2,8 +2,9 @@
 //  GameNodeAction.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
+
 
 
 import Foundation
@@ -13,7 +14,7 @@ enum GameNodeAction:
     Equatable,
     Sendable {
 
-    case showLabel(
+    case showPlay(
         nodeID: GameNodeID
     )
 

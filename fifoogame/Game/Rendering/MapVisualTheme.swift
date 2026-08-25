@@ -2,8 +2,9 @@
 //  MapVisualTheme.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/22/26.
+//  Created by Daudi Sagala on 8/23/26.
 //
+
 
 
 import SpriteKit
@@ -63,7 +64,7 @@ enum MapVisualTheme {
             red: 235 / 255,
             green: 240 / 255,
             blue: 245 / 255,
-            alpha: 0.72
+            alpha: 0.32
         )
 
 
@@ -219,5 +220,52 @@ enum MapVisualTheme {
             green: 232 / 255,
             blue: 240 / 255,
             alpha: 0.95
+        )
+
+
+    /// Opaque-enough dark plate behind the node title/time so the caption
+    /// remains readable over roads, route strokes, and land islands.
+    static let nodeCaptionBackgroundColor =
+        SKColor(
+            red: 17 / 255,
+            green: 26 / 255,
+            blue: 36 / 255,
+            alpha: 0.90
+        )
+
+    static let nodeCaptionBorderColor =
+    SKColor(
+        red: 17 / 255,
+        green: 26 / 255,
+        blue: 36 / 255,
+        alpha: 0.90
+    )
+
+    
+    //MARK: todo style tes
+    static let nodeCaptionShadowColor =
+        SKColor(
+            red: 0,
+            green: 0,
+            blue: 0,
+            alpha: 0.10
+        )
+
+
+    static let nodeCaptionTitleColor =
+        SKColor(
+            red: 247 / 255,
+            green: 250 / 255,
+            blue: 252 / 255,
+            alpha: 1
+        )
+
+
+    static let nodeCaptionTimeColor =
+        SKColor(
+            red: 214 / 255,
+            green: 225 / 255,
+            blue: 236 / 255,
+            alpha: 0.88
         )
 }

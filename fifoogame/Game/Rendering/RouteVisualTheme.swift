@@ -68,11 +68,11 @@ enum RouteVisualTheme {
 
 
     static let completedWidth:
-        CGFloat = 8
+        CGFloat = 24
 
 
     static let completedHaloWidth:
-        CGFloat = 14
+        CGFloat = 30
 
 
     // =====================================================
@@ -106,11 +106,11 @@ enum RouteVisualTheme {
 
 
     static let chosenWidth:
-        CGFloat = 7
+        CGFloat = 21
 
 
     static let chosenHaloWidth:
-        CGFloat = 13
+        CGFloat = 27
 
 
     // =====================================================
@@ -131,7 +131,7 @@ enum RouteVisualTheme {
 
 
     static let alternativeWidth:
-        CGFloat = 4
+        CGFloat = 21
 
 
     // =====================================================
@@ -202,14 +202,14 @@ enum RouteVisualTheme {
 
 
     static let previewSelectedWidth:
-        CGFloat = 8
+        CGFloat = 24
 
 
     static let previewSelectedHaloWidth:
-        CGFloat = 15
+        CGFloat = 30
 
 
     static let previewAlternativeWidth:
-        CGFloat = 4
+        CGFloat = 21
     
 }

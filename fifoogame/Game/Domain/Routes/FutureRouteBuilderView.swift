@@ -1577,8 +1577,6 @@ private extension FutureRouteBuilderView {
 
         switch kind {
 
-        case .label:
-            return "tag.fill"
 
         case .user:
             return "person.fill"
@@ -1594,6 +1592,10 @@ private extension FutureRouteBuilderView {
 
         case .hyperlink:
             return "link"
+            
+        case .play:
+            return "play"
+            
         }
     }
 
@@ -1604,9 +1606,6 @@ private extension FutureRouteBuilderView {
     ) -> String {
 
         switch kind {
-
-        case .label:
-            return "Label"
 
         case .user:
             return "User"
@@ -1622,6 +1621,10 @@ private extension FutureRouteBuilderView {
 
         case .hyperlink:
             return "Link"
+            
+        case .play:
+            return "Play"
+            
         }
     }
 }

@@ -2,13 +2,38 @@
 //  GameStore.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/18/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
 
 
 
 import Foundation
 import Combine
+
+
+struct RoadNodeAddRequest:
+    Identifiable,
+    Equatable,
+    Sendable {
+
+    let id:
+        UUID
+
+    let coordinate:
+        MapCoordinate
+
+
+    init(
+        coordinate: MapCoordinate
+    ) {
+
+        self.id =
+            UUID()
+
+        self.coordinate =
+            coordinate
+    }
+}
 
 
 @MainActor
@@ -19,6 +44,24 @@ final class GameStore: ObservableObject {
 @Published
 private(set) var debugRouteScenario:
     DebugRouteScenario?
+
+/// Render-only alternative paths used by the DEBUG route-render demo.
+///
+/// This is intentionally separate from `routeState.alternativeRoutes` so the
+/// renderer can be tested deterministically even when the real alternative
+/// route generator legitimately produces zero or near-overlapping options.
+@Published
+var debugAlternativeRenderPaths:
+    [RouteRenderPath]?
+
+/// Complete render-state override used by deterministic DEBUG fixtures.
+///
+/// Unlike `debugAlternativeRenderPaths`, this can replace Completed, Chosen,
+/// Alternatives, and the current route boundary together. It exists only to
+/// test renderer behavior without depending on production planning data.
+@Published
+var debugRouteRenderStateOverride:
+    RouteRenderState?
 
 #endif
     
@@ -68,6 +111,13 @@ private(set) var debugRouteScenario:
     @Published
     private(set) var pendingRouteAction:
     RouteAction?
+
+    /// A road/intersection tap is now an Add Node request rather than a
+    /// persistent road selection. A unique ID ensures repeated taps at the
+    /// same semantic coordinate can still present the sheet again.
+    @Published
+    private(set) var pendingRoadNodeAddRequest:
+        RoadNodeAddRequest?
     
     @Published
     private(set) var futureRouteDraftPlan:
@@ -232,7 +282,32 @@ private(set) var debugRouteScenario:
         roadGraph
         
         self.gameNodes =
-        gameNodes
+        gameNodes.map { node in
+
+            var synchronized =
+                node
+
+            if case let .roadVertex(
+                vertexID
+            ) = node.placement,
+               let vertex =
+                roadGraph.vertex(
+                    id:
+                        vertexID
+                )
+            {
+
+                synchronized.setPlacement(
+                    .roadVertex(
+                        vertexID
+                    ),
+                    resolvedRoadTime:
+                        vertex.coordinate.time
+                )
+            }
+
+            return synchronized
+        }
         
         
         let timeZone =
@@ -268,11 +343,49 @@ private(set) var debugRouteScenario:
         pendingNodeAction =
         nil
     }
+
+    func consumePendingRoadNodeAddRequest() {
+
+        pendingRoadNodeAddRequest =
+            nil
+    }
     
     // =====================================================
     // MARK: - Game Node Editing
     // =====================================================
     
+    private func synchronizedNodeTime(
+        _ node: GameMapNode
+    ) -> GameMapNode {
+
+        var synchronized =
+            node
+
+        guard case let .roadVertex(
+            vertexID
+        ) = node.placement,
+              let vertex =
+                roadGraph.vertex(
+                    id:
+                        vertexID
+                )
+        else {
+
+            return synchronized
+        }
+
+        synchronized.setPlacement(
+            .roadVertex(
+                vertexID
+            ),
+            resolvedRoadTime:
+                vertex.coordinate.time
+        )
+
+        return synchronized
+    }
+
+
     func updateGameNode(
         _ updatedNode: GameMapNode
     ) {
@@ -290,8 +403,13 @@ private(set) var debugRouteScenario:
         }
         
         
+        let synchronized =
+        synchronizedNodeTime(
+            updatedNode
+        )
+
         gameNodes[index] =
-        updatedNode
+        synchronized
         
         invalidateDraftPlanIfNeeded(
             changedNodeID:
@@ -380,8 +498,13 @@ private(set) var debugRouteScenario:
         }
         
         
-        gameNodes.append(
+        let synchronized =
+        synchronizedNodeTime(
             node
+        )
+
+        gameNodes.append(
+            synchronized
         )
         
         
@@ -1115,6 +1238,14 @@ private(set) var debugRouteScenario:
     // =====================================================
     
     var routeRenderState: RouteRenderState {
+
+        #if DEBUG
+
+        if let debugRouteRenderStateOverride {
+            return debugRouteRenderStateOverride
+        }
+
+        #endif
         
         // =================================================
         // Completed
@@ -1214,6 +1345,21 @@ private(set) var debugRouteScenario:
         // Build State
         // =================================================
         
+        #if DEBUG
+
+        let renderedAlternatives =
+            debugAlternativeRenderPaths
+            ??
+            alternativeRenderPaths
+
+        #else
+
+        let renderedAlternatives =
+            alternativeRenderPaths
+
+        #endif
+
+
         let result =
         RouteRenderState(
             completedSegments:
@@ -1221,7 +1367,7 @@ private(set) var debugRouteScenario:
             chosenFuture:
                 chosenFuture,
             alternatives:
-                alternativeRenderPaths,
+                renderedAlternatives,
             currentBoundary:
                 routeState
                 .completedRoute
@@ -4822,26 +4968,27 @@ extension GameStore:
             // =============================================
             
         case let .roadEdgeTapped(
-            edgeID,
             _,
-            _
+            _,
+            mapCoordinate
         ):
             
             pendingNodeAction =
             nil
-            
-            
-            var updated =
-            selection
-            
-            
-            updated.selectRoadEdge(
-                edgeID
-            )
-            
-            
-            selection =
-            updated
+
+            pendingRouteAction =
+            nil
+
+            // Road taps are no longer selections, so there is no visual road
+            // color/halo state to render. Clear any previous selection and
+            // turn the resolved road coordinate into an Add Node request.
+            selection.clear()
+
+            pendingRoadNodeAddRequest =
+                RoadNodeAddRequest(
+                    coordinate:
+                        mapCoordinate
+                )
             
             
             // =============================================
@@ -4849,26 +4996,24 @@ extension GameStore:
             // =============================================
             
         case let .roadVertexTapped(
-            vertexID,
             _,
-            _
+            _,
+            mapCoordinate
         ):
             
             pendingNodeAction =
             nil
-            
-            
-            var updated =
-            selection
-            
-            
-            updated.selectRoadVertex(
-                vertexID
-            )
-            
-            
-            selection =
-            updated
+
+            pendingRouteAction =
+            nil
+
+            selection.clear()
+
+            pendingRoadNodeAddRequest =
+                RoadNodeAddRequest(
+                    coordinate:
+                        mapCoordinate
+                )
             
             
             // =============================================
@@ -5260,7 +5405,7 @@ private extension GameStore {
         title:
             String,
 
-        symbol:
+        symbol _legacySymbol:
             String
     ) -> GameMapNode {
 
@@ -5285,6 +5430,9 @@ private extension GameStore {
                     vertex.id
                 ),
 
+            time:
+                vertex.coordinate.time,
+
             content:
                 .activity(
                     ActivityNodeContent(
@@ -5298,9 +5446,7 @@ private extension GameStore {
                             "Debug day-map route fixture",
 
                         image:
-                            .systemSymbol(
-                                name: symbol
-                            )
+                            nil
                     )
                 ),
 
@@ -6274,6 +6420,5 @@ private extension GameStore {
 }
 
 #endif
-
 
 

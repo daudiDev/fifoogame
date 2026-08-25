@@ -2,7 +2,7 @@
 //  GameNodeNormalizer.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
 
 
@@ -21,17 +21,21 @@ enum GameNodeNormalizer {
 
         switch updated.content {
 
-        case var .label(
+        case var .play(
             content
         ):
 
-            content.text =
+            content.title =
                 clean(
-                    content.text
+                    content.title
                 )
 
+            if content.title.isEmpty {
+                content.title = "Play"
+            }
+
             updated.content =
-                .label(
+                .play(
                     content
                 )
 
@@ -49,6 +53,57 @@ enum GameNodeNormalizer {
                 clean(
                     content.userID
                 )
+
+
+            if var profile =
+                content.profile {
+
+                profile.userID = clean(profile.userID)
+                profile.username = clean(profile.username)
+                profile.firstName = clean(profile.firstName)
+                profile.lastName = clean(profile.lastName)
+                profile.phone = clean(profile.phone)
+                profile.joined = clean(profile.joined)
+                profile.imageURL = clean(profile.imageURL)
+                profile.goal = clean(profile.goal)
+                profile.lastActive = clean(profile.lastActive)
+
+                profile.inFollowersCount = max(0, profile.inFollowersCount)
+                profile.outFollowersCount = max(0, profile.outFollowersCount)
+                profile.tipsCount = max(0, profile.tipsCount)
+                profile.responseCount = max(0, profile.responseCount)
+                profile.requestCount = max(0, profile.requestCount)
+                profile.progress = max(0, profile.progress)
+
+
+                if profile.userID.isEmpty {
+                    profile.userID = content.userID
+                } else {
+                    content.userID = profile.userID
+                }
+
+
+                let preferredName =
+                    profile.preferredDisplayName
+
+                if !preferredName.isEmpty {
+                    content.displayName = preferredName
+                }
+
+
+                if !profile.imageURL.isEmpty {
+                    content.image =
+                        .remote(
+                            urlString:
+                                profile.imageURL
+                        )
+                }
+
+
+                content.profile =
+                    profile
+            }
+
 
             updated.content =
                 .user(
@@ -69,6 +124,234 @@ enum GameNodeNormalizer {
                 clean(
                     content.activityID
                 )
+
+            content.date =
+                clean(
+                    content.date
+                )
+
+            // GameMapNode.time is the map's semantic source of truth for
+            // the activity start time. Saving the editor keeps the Activity
+            // snapshot synchronized with its vertical map position.
+            content.startTime =
+                updated.time
+                    .displayClockString
+
+            content.endTime =
+                clean(
+                    content.endTime
+                )
+
+            content.location =
+                clean(
+                    content.location
+                )
+
+            content.activityType =
+                content.resolvedActivityType
+                    .rawValue
+
+            content.status =
+                clean(
+                    content.status
+                )
+
+            if content.status.isEmpty {
+
+                content.status =
+                    "Not Started"
+            }
+
+
+            if var meal =
+                content.meal {
+
+                meal.title =
+                    clean(
+                        meal.title
+                    )
+
+                meal.priceRange =
+                    clean(
+                        meal.priceRange
+                    )
+
+                meal.estimatedTimeMinutes =
+                    max(
+                        0,
+                        meal.estimatedTimeMinutes
+                    )
+
+                if let imageURL =
+                    meal.imageURL {
+
+                    let cleanedImageURL =
+                        clean(
+                            imageURL
+                        )
+
+                    meal.imageURL =
+                        cleanedImageURL.isEmpty
+                        ? nil
+                        : cleanedImageURL
+                }
+
+                if var user =
+                    meal.user {
+
+                    user.name = clean(user.name)
+                    user.location = clean(user.location)
+                    user.avatarURL = clean(user.avatarURL)
+                    meal.user = user
+                }
+
+                if var meals =
+                    meal.meals {
+
+                    for index in
+                        meals.indices {
+
+                        meals[index].title = clean(meals[index].title)
+                        meals[index].estimatedTimeMinutes = max(0, meals[index].estimatedTimeMinutes)
+                        meals[index].recipeCount = max(0, meals[index].recipeCount)
+                        meals[index].ingredientCount = max(0, meals[index].ingredientCount)
+                        meals[index].sourceCount = max(0, meals[index].sourceCount)
+
+                        if let imageURL = meals[index].imageURL {
+                            let cleaned = clean(imageURL)
+                            meals[index].imageURL = cleaned.isEmpty ? nil : cleaned
+                        }
+
+                        if let priceRange = meals[index].priceRange {
+                            let cleaned = clean(priceRange)
+                            meals[index].priceRange = cleaned.isEmpty ? nil : cleaned
+                        }
+                    }
+
+                    meal.meals = meals
+                }
+
+                if var copyStatus = meal.copyStatus {
+                    copyStatus.status = clean(copyStatus.status)
+                    copyStatus.timestamp = clean(copyStatus.timestamp)
+                    meal.copyStatus = copyStatus
+                }
+
+                if let createdAt = meal.createdAt {
+                    let cleaned = clean(createdAt)
+                    meal.createdAt = cleaned.isEmpty ? nil : cleaned
+                }
+
+                content.meal =
+                    meal
+            }
+
+
+            if var workout =
+                content.workout {
+
+                workout.title = clean(workout.title)
+                workout.location = clean(workout.location)
+                workout.selectedWorkoutTime = clean(workout.selectedWorkoutTime)
+                workout.durationText = clean(workout.durationText)
+                workout.distance = clean(workout.distance)
+                workout.workoutFormat = clean(workout.workoutFormat)
+                workout.rating = clean(workout.rating)
+                workout.categories =
+                    workout.categories
+                        .map { clean($0) }
+                        .filter { !$0.isEmpty }
+
+                workout.durationInSeconds =
+                    max(
+                        0,
+                        workout.durationInSeconds
+                    )
+
+                if let description = workout.description {
+                    let cleaned = clean(description)
+                    workout.description = cleaned.isEmpty ? nil : cleaned
+                }
+
+                if var imageURLs = workout.imageURLs {
+                    imageURLs = imageURLs.map { clean($0) }.filter { !$0.isEmpty }
+                    workout.imageURLs = imageURLs.isEmpty ? nil : imageURLs
+                }
+
+                if let status = workout.workoutStatus {
+                    let cleaned = clean(status)
+                    workout.workoutStatus = cleaned.isEmpty ? nil : cleaned
+                }
+
+                if let count = workout.commentsCount {
+                    workout.commentsCount = max(0, count)
+                }
+
+                if var trainer = workout.trainer {
+                    trainer.name = clean(trainer.name)
+                    trainer.location = clean(trainer.location)
+                    trainer.userImageURL = clean(trainer.userImageURL)
+                    trainer.userDescription = clean(trainer.userDescription)
+                    trainer.onlineStatus = clean(trainer.onlineStatus)
+                    trainer.rating = clean(trainer.rating)
+                    workout.trainer = trainer
+                }
+
+                if var user = workout.user {
+                    user.name = clean(user.name)
+                    user.location = clean(user.location)
+                    user.avatarURL = clean(user.avatarURL)
+                    workout.user = user
+                }
+
+                if var copyStatus = workout.copyStatus {
+                    copyStatus.status = clean(copyStatus.status)
+                    copyStatus.timestamp = clean(copyStatus.timestamp)
+                    workout.copyStatus = copyStatus
+                }
+
+                if let createdAt = workout.createdAt {
+                    let cleaned = clean(createdAt)
+                    workout.createdAt = cleaned.isEmpty ? nil : cleaned
+                }
+
+                content.workout =
+                    workout
+            }
+
+
+            if var task =
+                content.task {
+
+                task.title =
+                    clean(
+                        task.title
+                    )
+
+                task.description =
+                    clean(
+                        task.description
+                    )
+
+                if var imageURLs = task.imageURLs {
+                    imageURLs = imageURLs.map { clean($0) }.filter { !$0.isEmpty }
+                    task.imageURLs = imageURLs.isEmpty ? nil : imageURLs
+                }
+
+                if var videoURLs = task.videoURLs {
+                    videoURLs = videoURLs.map { clean($0) }.filter { !$0.isEmpty }
+                    task.videoURLs = videoURLs.isEmpty ? nil : videoURLs
+                }
+
+                if var copyStatus = task.copyStatus {
+                    copyStatus.status = clean(copyStatus.status)
+                    copyStatus.timestamp = clean(copyStatus.timestamp)
+                    task.copyStatus = copyStatus
+                }
+
+                content.task =
+                    task
+            }
 
 
             if let description =
@@ -105,6 +388,110 @@ enum GameNodeNormalizer {
                 clean(
                     content.postID
                 )
+
+
+            if var snapshot =
+                content.snapshot
+            {
+                snapshot.postID = clean(snapshot.postID)
+                snapshot.postType = clean(snapshot.postType)
+                snapshot.subject = clean(snapshot.subject)
+                snapshot.postMainMediaURL = clean(snapshot.postMainMediaURL)
+                snapshot.postMainMediaType = clean(snapshot.postMainMediaType)
+                snapshot.posterID = clean(snapshot.posterID)
+                snapshot.posterName = clean(snapshot.posterName)
+                snapshot.posterImageURL = clean(snapshot.posterImageURL)
+                snapshot.posterLocation = clean(snapshot.posterLocation)
+                snapshot.posterRole = clean(snapshot.posterRole)
+                snapshot.posterConversationID = clean(snapshot.posterConversationID)
+                snapshot.createdAt = clean(snapshot.createdAt)
+                snapshot.status = clean(snapshot.status)
+                snapshot.savedPostStatus = clean(snapshot.savedPostStatus)
+                snapshot.postMealID = clean(snapshot.postMealID)
+                snapshot.postWorkoutID = clean(snapshot.postWorkoutID)
+                snapshot.postActivityID = clean(snapshot.postActivityID)
+                snapshot.postTaskID = clean(snapshot.postTaskID)
+
+                snapshot.postImageURLs =
+                    snapshot.postImageURLs
+                        .map { clean($0) }
+                        .filter { !$0.isEmpty && $0.lowercased() != "none" }
+
+                snapshot.postVideoURLs =
+                    snapshot.postVideoURLs
+                        .map { clean($0) }
+                        .filter { !$0.isEmpty && $0.lowercased() != "none" }
+
+                snapshot.tags =
+                    snapshot.tags
+                        .map { clean($0) }
+                        .filter { !$0.isEmpty && $0.lowercased() != "none" }
+
+                snapshot.responderImageURLs =
+                    snapshot.responderImageURLs
+                        .map { clean($0) }
+                        .filter { !$0.isEmpty && $0.lowercased() != "none" }
+
+                snapshot.postGIFMedia =
+                    Dictionary(
+                        uniqueKeysWithValues:
+                            snapshot.postGIFMedia
+                                .map {
+                                    (
+                                        clean($0.key),
+                                        clean($0.value)
+                                    )
+                                }
+                                .filter {
+                                    !$0.0.isEmpty && !$0.1.isEmpty
+                                }
+                    )
+
+                snapshot.postMediaCount =
+                    max(
+                        0,
+                        snapshot.postMediaCount
+                    )
+
+                snapshot.postResponseCount =
+                    max(
+                        0,
+                        snapshot.postResponseCount
+                    )
+
+                snapshot.postSavedCount =
+                    max(
+                        0,
+                        snapshot.postSavedCount
+                    )
+
+
+                if snapshot.postID.isEmpty {
+                    snapshot.postID = content.postID
+                } else {
+                    content.postID = snapshot.postID
+                }
+
+
+                content.title =
+                    snapshot.preferredTitle
+
+
+                if let imageURL =
+                    snapshot.preferredMarkerImageURL
+                {
+                    content.image =
+                        .remote(
+                            urlString:
+                                imageURL
+                        )
+                }
+
+
+                content.snapshot =
+                    snapshot
+            }
+
 
             updated.content =
                 .post(

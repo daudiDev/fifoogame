@@ -2,8 +2,9 @@
 //  GameNodeValidation.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/19/26.
+//  Created by Daudi Sagala on 8/24/26.
 //
+
 
 import Foundation
 
@@ -154,19 +155,19 @@ private extension GameNodeValidator {
         switch content {
 
         // =========================================
-        // Label
+        // Play
         // =========================================
 
-        case let .label(
+        case let .play(
             content
         ):
 
             requireText(
-                content.text,
+                content.title,
                 fieldName:
-                    "Label text",
+                    "Play title",
                 id:
-                    "label.text",
+                    "play.title",
                 issues:
                     &issues
             )
@@ -494,31 +495,21 @@ private extension GameNodeValidator {
 
 
         // =========================================
-        // SF Symbol
+        // Legacy SF Symbol
         // =========================================
 
-        case let .systemSymbol(
-            name
-        ):
+        case .systemSymbol:
 
-            if
-                name
-                    .trimmingCharacters(
-                        in:
-                            .whitespacesAndNewlines
-                    )
-                    .isEmpty
-            {
-
-                issues.append(
-                    GameNodeValidationIssue(
-                        id:
-                            "image.symbol.empty",
-                        message:
-                            "SF Symbol name cannot be empty."
-                    )
+            issues.append(
+                GameNodeValidationIssue(
+                    id:
+                        "image.symbol.legacy",
+                    severity:
+                        .warning,
+                    message:
+                        "SF Symbol marker images are legacy. This node will render its type-specific placeholder until you choose an Asset or Remote image."
                 )
-            }
+            )
 
 
         // =========================================

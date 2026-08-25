@@ -12,8 +12,6 @@ import AVKit
 // MARK: - Main Workout Feed
 
 struct PlayView: View {
-
-    @Binding var isShowingPlay: Bool
     
     private let session = WorkoutSessionManager.shared
     private let socketManager = SocketManager.shared
@@ -111,8 +109,7 @@ struct PlayView: View {
                     WorkoutStatusOverlay(
                         geometry: geometry,
                         showWorkoutStatusOverlay:
-                            $showWorkoutStatusOverlay, isShowingPlay: $isShowingPlay
-                    )
+                            $showWorkoutStatusOverlay )
                     .zIndex(50)
                 }
 
@@ -1194,7 +1191,7 @@ private extension PlayView {
 
         // Add dismiss/navigation here.
         
-        isShowingPlay = false
+        socketManager.isShowingPlay = false
         
     }
 }

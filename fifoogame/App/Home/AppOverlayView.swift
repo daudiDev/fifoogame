@@ -8,19 +8,20 @@
 import SwiftUI
 
 struct AppOverLayView: View {
-    
+    private let socketManager = SocketManager.shared
     @State private var isTopRowVisible = true
-    
     @State private var isShowingHomeMenuView = false
     @State private var isShowingUserActionsProgressView: Bool = false
     @State private var isShowingGroupView = false
     @State private var isShowingSearchView = false
     @State private var isShowingGroupChatView = true
     @State private var isShowingAskHelp: Bool = false
-    @State private var isShowingPlay: Bool = false
     
     @State private var commentsExpanded = true
     @State private var commentsDragOffset: CGFloat = 0
+    
+    @State private var isShowingProgressDataView = false
+    
     
     @Binding var isShowingAddNode: Bool
     
@@ -33,10 +34,10 @@ struct AppOverLayView: View {
                     
                     VStack {
                         
-                        AppOverLayTopRow(isShowingHomeMenuView: $isShowingHomeMenuView, isShowingUserActionsProgressView: $isShowingUserActionsProgressView)
+                        AppOverLayTopRow(isShowingUserActionsProgressView: $isShowingUserActionsProgressView, isShowingProgressDataView: $isShowingProgressDataView)
                         Spacer()
                         
-                        AppOverLayBottomRow(geo: geo, isShowingSearchView: $isShowingSearchView, isShowingAskHelp: $isShowingAskHelp, isShowingPlay: $isShowingPlay, isShowingAddNode: $isShowingAddNode)
+                        AppOverLayBottomRow(geo: geo, isShowingSearchView: $isShowingSearchView, isShowingAddNode: $isShowingAddNode, isShowingHomeMenuView: $isShowingHomeMenuView)
                         
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -50,6 +51,16 @@ struct AppOverLayView: View {
                             .transition(.move(edge: .trailing))
                             .zIndex(1)
                     }
+                    
+                    // Custom Full Screen Cover
+                    if isShowingProgressDataView {
+                        
+                        UserProgressDataView(isShowingProgressDataView: $isShowingProgressDataView)
+                            .transition(.move(edge: .trailing))
+                            .zIndex(2)
+                        
+                    }
+                    
                 } //zs
                 .background(.clear)
                 .sheet(isPresented: $isShowingSearchView) {
@@ -58,33 +69,7 @@ struct AppOverLayView: View {
                         .presentationDragIndicator(.visible)
                         .presentationBackground(.ultraThinMaterial)
                 }
-                .sheet(isPresented: $isShowingAskHelp) {
-                    SeekHelpView(isShowingAskHelp: $isShowingAskHelp)
-                        .presentationDetents([.large])
-                        .presentationDragIndicator(.visible)
-                        .presentationBackground(.ultraThinMaterial)
-                }
-                .fullScreenCover(isPresented: $isShowingPlay) {
-                    PlayView(isShowingPlay: $isShowingPlay)
-                        .task {
-                            
-                            /*
-                             Add when backend exists:
-                             
-                             socketManager.configure(
-                             serverURL:
-                             URL(
-                             string:
-                             "https://API-SERVER.com"
-                             )!
-                             )
-                             
-                             socketManager.connect()
-                             */
-                        }
-                }
-            
-            
+                
         } //gr
      
     }

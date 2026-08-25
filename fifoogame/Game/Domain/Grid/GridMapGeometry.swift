@@ -2,7 +2,7 @@
 //  GridMapGeometry.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/22/26.
+//  Created by Daudi Sagala on 8/23/26.
 //
 
 
@@ -158,19 +158,50 @@ enum GridMapConfiguration {
     }
 
 
-    /// Keep approximately the same island-to-street proportion as the tuned
-    /// Step 3 design while scaling the entire grid up to the lower density.
+    /// Baseline street share from the previous low-density Step 3 layout.
     ///
-    /// Previous tuned layout:
-    ///     street / pitch ≈ 26.88%
+    /// The current visual experiment asks for two simultaneous changes:
     ///
-    /// New layout:
-    ///     12.5 * 0.2688 = 3.36 map units
-    ///     3.36 * 10       = 33.6 world points
+    ///     island emphasis  × 0.70
+    ///     road emphasis    × 1.30
     ///
-    /// This keeps the streets visibly wide even though the blocks are now
-    /// substantially larger and less cluttered.
-    static let roadWidthFractionOfPitch: CGFloat = 0.2688
+    /// The grid pitch itself MUST remain fixed at 12.5 map units so we keep:
+    ///
+    ///     4 islands per 6-hour window
+    ///     16 island rows across the day
+    ///     8 matching columns across 0...100% progress
+    ///
+    /// Because islandSize + roadWidth must equal the fixed pitch, literal
+    /// -30% and +30% world-space changes cannot both happen independently.
+    /// We therefore apply those factors as relative visual weights and then
+    /// normalize them back into the same 12.5-unit pitch.
+    static let baselineRoadWidthFractionOfPitch: CGFloat = 0.2688
+
+    static let requestedIslandScale: CGFloat = 0.70
+    static let requestedRoadScale: CGFloat = 1.30
+
+
+    static var roadWidthFractionOfPitch: CGFloat {
+
+        let baselineRoad =
+            baselineRoadWidthFractionOfPitch
+
+        let baselineIsland =
+            1 - baselineRoad
+
+        let weightedRoad =
+            baselineRoad
+            * requestedRoadScale
+
+        let weightedIsland =
+            baselineIsland
+            * requestedIslandScale
+
+        return
+            weightedRoad
+            / (weightedRoad + weightedIsland)
+    }
+
 
     static var roadWidthMapUnits: CGFloat {
 
@@ -179,14 +210,20 @@ enum GridMapConfiguration {
     }
 
 
-    /// The island occupies the remaining portion of the pitch.
+    /// The island occupies the remaining portion of the fixed pitch.
     ///
-    /// At the current Cartesian scale:
+    /// With the normalized -30% island / +30% road visual weighting, the
+    /// current 125-point pitch becomes approximately:
     ///
-    ///     12.5 - 3.36 = 9.14 map units
-    ///     9.14 * 10   = 91.4 world points
+    ///     road   = 50.72 world points
+    ///     island = 74.28 world points
     ///
-    /// X and Y use the same map-unit scale, so these remain true squares.
+    /// This is intentionally much more road-dominant than the prior:
+    ///
+    ///     road   = 33.6
+    ///     island = 91.4
+    ///
+    /// while preserving all Cartesian/time/progress topology.
     static var islandSizeMapUnits: CGFloat {
 
         cellPitchMapUnits
@@ -194,12 +231,12 @@ enum GridMapConfiguration {
     }
 
 
-    /// Keep the rounded-square character proportional to the larger island.
-    /// This evaluates to roughly 1.26 map units / 12.6 world points.
+    /// Slightly increase the proportional rounding on the smaller islands so
+    /// they still read as soft rounded squares beside the wider streets.
     static var islandCornerRadiusMapUnits: CGFloat {
 
         islandSizeMapUnits
-        * 0.138
+        * 0.145
     }
 
 
@@ -232,8 +269,7 @@ enum GridMapConfiguration {
     // MARK: - Step 3 Visual Geometry
     // =====================================================
 
-    /// Keep the perimeter delicate against the larger island.
-    /// Approximately 1.37 world points at the current scale.
+    /// Keep the perimeter delicate after shrinking the islands.
     static var islandBorderWidthMapUnits: CGFloat {
 
         islandSizeMapUnits
@@ -241,47 +277,51 @@ enum GridMapConfiguration {
     }
 
 
-    /// Slight lower/right offset for the raised-island effect.
-    /// These scale with the larger pitch but stay intentionally subtle.
+    /// The smaller islands need a slightly shallower shadow so the raised
+    /// effect does not visually eat into the newly widened road corridor.
     static var islandShadowOffsetXMapUnits: CGFloat {
 
-        cellPitchMapUnits
-        * 0.0224
+        islandSizeMapUnits
+        * 0.030
     }
 
     static var islandShadowOffsetYMapUnits: CGFloat {
 
-        cellPitchMapUnits
-        * 0.0252
+        islandSizeMapUnits
+        * 0.034
     }
 
 
-    /// Sparse road-marking geometry. The road sections are now much longer,
-    /// but we intentionally keep only two dashes per section so the lower-
-    /// density design does not become visually busy again.
+    /// Keep the sparse two-dash street language, but lengthen each dash just
+    /// enough to feel intentional inside the substantially wider roads.
     static var roadDashLengthMapUnits: CGFloat {
 
         cellPitchMapUnits
-        * 0.1008
+        * 0.105
+        
+
     }
 
-    /// Slightly restrained relative to the wider road so the markings do not
-    /// become visually heavy after the scale increase.
+    /// Road markings grow with road width, but at a restrained 6% so the
+    /// wider asphalt does not make the center dashes visually heavy.
     static var roadDashLineWidthMapUnits: CGFloat {
 
         roadWidthMapUnits
-        * 0.07
+        * 0.060
+        //MARK: todo temp
+//        roadWidthMapUnits
+//        * 0.090
+        
     }
 
     static let roadDashCountPerSegment: Int = 2
 
-
-    /// Scale the clean intersection zone with the larger street spacing.
-    /// At the current pitch this is about 2.625 map units / 26.25 points.
+    /// Give the larger intersections a little more breathing room before
+    /// lane dashes resume.
     static var roadIntersectionClearanceMapUnits: CGFloat {
 
         cellPitchMapUnits
-        * 0.21
+        * 0.235
     }
 
 

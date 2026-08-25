@@ -8,11 +8,11 @@
 import SwiftUI
 
 struct AppOverLayBottomRow: View {
+    private let socketManager = SocketManager.shared
     var geo: GeometryProxy
     @Binding var isShowingSearchView: Bool
-    @Binding var isShowingAskHelp: Bool
-    @Binding var isShowingPlay: Bool
     @Binding var isShowingAddNode: Bool
+    @Binding var isShowingHomeMenuView: Bool
     
     var body: some View {
         HStack(alignment: .center) {
@@ -34,7 +34,7 @@ struct AppOverLayBottomRow: View {
                 
                 Button {
                     
-                    isShowingPlay = true
+                    socketManager.isShowingPlay = true
                     
                 } label: {
                     Text(Image(systemName: "play.square.stack.fill"))
@@ -61,18 +61,45 @@ struct AppOverLayBottomRow: View {
                     .plain
                 )
                 
-                Button {
+                
+                //MARK: this will open the app menu with links to: profile, chat, reminders, posts etc
+                Button(action: {
+                    withAnimation(.spring()) {
+                        isShowingHomeMenuView.toggle()
+                    }
+                }) {
                     
-                    isShowingAskHelp = true
+                    ZStack {
+                        //MARK: add user profile image
+                        HStack(alignment: .center) {
+                            Image("placeholder")
+                                .resizable()
+                                .frame(width: 40, height: 40)
+                                .background(
+                                    Color.blue.opacity(0.1),
+                                    in: Circle()
+                                )
+                        }
+                        
+                        //MARK: add data on the actions count?? or something else
+                        HStack {
+                            Spacer()
+                            VStack {
+                                Text("8")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(5)
+                                    .background(Circle().fill(Color.red))
+                                Spacer()
+                            }
+                            
+                        }
+                        .frame(width: 40, height: 40)
+                        .background(.clear)
+                        
+                    } //zs
                     
-                } label: {
-                    Text(Image(systemName: "questionmark.circle.fill"))
-                        .font(.system(size: 28))
-                        .foregroundStyle(.black.opacity(0.9))
-                }
-                .buttonStyle(
-                    .plain
-                )
+                } //btn
                 
                 
             }
