@@ -23,6 +23,7 @@ enum AddGameNodeType:
     String,
     CaseIterable,
     Identifiable,
+    Hashable,
     Sendable {
 
     case meal

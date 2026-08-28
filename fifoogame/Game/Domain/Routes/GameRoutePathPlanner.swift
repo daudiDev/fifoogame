@@ -147,7 +147,7 @@ struct GameRoutePathPlanner {
                         toNodeID:
                             entryLeg.toNodeID,
                         message:
-                            "Unable to resolve the first route stop."
+                            "Unable to resolve the first path stop."
                     )
                 )
 
@@ -259,7 +259,7 @@ struct GameRoutePathPlanner {
                         toNodeID:
                             leg.toNodeID,
                         message:
-                            "Unable to resolve route anchors."
+                            "Unable to resolve path anchors."
                     )
                 )
 

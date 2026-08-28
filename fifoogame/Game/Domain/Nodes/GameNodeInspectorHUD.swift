@@ -60,7 +60,7 @@ struct GameNodeInspectorHUD:
 
 
             Text(
-                "Node ID"
+                "Stop ID"
             )
             .foregroundStyle(
                 .secondary

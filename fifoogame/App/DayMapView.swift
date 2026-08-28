@@ -2,8 +2,9 @@
 //  DayMapView.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/24/26.
+//  Created by Daudi Sagala on 8/25/26.
 //
+
 
 
 import SwiftUI
@@ -83,15 +84,22 @@ struct DayMapView: View {
     @State
     private var scene: VirtualMapScene
     
+    /// Single source of truth for Add Node presentation.
+    ///
+    /// Both the toolbar + button and road/intersection taps feed this one
+    /// item-based sheet. Keeping a single sheet identity avoids SwiftUI trying
+    /// to coordinate two competing AddGameNodeView presentations.
     @State
-    private var isShowingAddNode =
-        false
+    private var addNodePresentation:
+        AddNodePresentation?
 
-    /// Set when the user taps a road or intersection. The request carries the
-    /// exact semantic coordinate resolved by RoadHitTester.
+
+    /// Direct review presentation for an empty path card that has actual
+    /// app-provided suggested stop content. Cards without a suggestion bypass
+    /// this sheet and open the ordinary Add Stop flow immediately.
     @State
-    private var roadNodeAddRequest:
-        RoadNodeAddRequest?
+    private var suggestedPathStopPresentation:
+        SuggestedPathStopRequest?
 
 
     // MARK: - Init
@@ -121,17 +129,21 @@ struct DayMapView: View {
 
 
         let gameStore =
-            GameStore()
+            SocketManager.shared.gameStore
 
 
         let mapScene =
             VirtualMapScene(
                 initialTime:
                     gameStore.currentDayTime,
+                initialProgressPercent:
+                    gameStore.currentProgressPercent,
                 roadGraph:
                     gameStore.roadGraph,
                 gameNodes:
-                    gameStore.gameNodes
+                    gameStore.gameNodes,
+                revealedTileIDs:
+                    gameStore.revealedTileIDs
             )
 
 
@@ -155,7 +167,10 @@ struct DayMapView: View {
     var body: some View {
         NavigationStack {
             
-            ZStack {
+            ZStack(
+                alignment:
+                    .bottom
+            ) {
                 
                 // MARK: SpriteKit Map
                 
@@ -165,7 +180,40 @@ struct DayMapView: View {
                 )
                 .ignoresSafeArea()
                 
-                AppOverLayView(isShowingAddNode: $isShowingAddNode)
+                AppOverLayView {
+                    presentAddNode(
+                        at:
+                            socketManager.defaultNewNodeCoordinate
+                    )
+                }
+
+
+                if store.focusedAlternativeRouteID != nil {
+
+                    AlternateRoutePreviewOverlay(
+                        progressPercent:
+                            store
+                                .focusedAlternativePreviewProgressPercent,
+                        onViewRoute:
+                            viewFocusedAlternativeRoute,
+                        onClose:
+                            closeFocusedAlternativeRoutePreview
+                    )
+                    // Keep the preview controls above the existing bottom
+                    // navigation bar. The rest of this view is transparent,
+                    // so map pan/zoom gestures continue to reach SpriteKit.
+                    .padding(
+                        .horizontal,
+                        20
+                    )
+                    .padding(
+                        .bottom,
+                        112
+                    )
+                    .zIndex(
+                        40
+                    )
+                }
                 
                 if (socketManager.isShowingPlay) {
                     PlayView()
@@ -175,52 +223,87 @@ struct DayMapView: View {
             } //zs
 
         } //nav
-        .sheet(
-            isPresented:
-                $isShowingAddNode
-        ) {
-
-            AddGameNodeView(
-                initialCoordinate:
-                    newNodeInitialCoordinate,
-                roadGraph:
-                    store.roadGraph
-            ) { newNode in
-
-                store.addGameNode(
-                    newNode
-                )
-
-
-                isShowingAddNode =
-                    false
-            }
-        }
-
-        // A road/intersection tap opens the same node-type chooser as the
-        // normal Add Node flow, but seeds it with the tapped road's resolved
-        // time/progress coordinate.
+        // One Add Node sheet handles both toolbar and road/intersection
+        // entry points. Item-based presentation gives every request a stable
+        // identity and avoids competing Boolean/item sheets.
         .sheet(
             item:
-                $roadNodeAddRequest
-        ) { request in
+                $addNodePresentation
+        ) { presentation in
 
             AddGameNodeView(
                 initialCoordinate:
-                    request.coordinate,
+                    presentation.coordinate,
                 roadGraph:
                     store.roadGraph
             ) { newNode in
 
-                store.addGameNode(
+                socketManager.addGameNode(
                     newNode
                 )
 
-                roadNodeAddRequest =
+                addNodePresentation =
                     nil
             }
         }
         
+        .sheet(
+            item:
+                $suggestedPathStopPresentation
+        ) { request in
+
+            SuggestedPathStopReviewView(
+                request: request,
+                roadGraph: store.roadGraph,
+                onViewed: {
+
+                    socketManager.suggestedStopViewed(
+                        cellID: request.cellID,
+                        coordinate: request.coordinate
+                    )
+                },
+                onEditOpened: {
+
+                    socketManager.suggestedStopEditOpened(
+                        cellID: request.cellID,
+                        coordinate: request.coordinate
+                    )
+                },
+                onAccept: { node in
+
+                    socketManager.suggestedStopAccepted(
+                        cellID: request.cellID,
+                        coordinate: request.coordinate
+                    )
+
+                    store.clearSuggestedPathStop(
+                        for: request.cellID
+                    )
+
+                    socketManager.addGameNode(
+                        node
+                    )
+
+                    suggestedPathStopPresentation =
+                        nil
+                },
+                onReject: {
+
+                    socketManager.suggestedStopRejected(
+                        cellID: request.cellID,
+                        coordinate: request.coordinate
+                    )
+
+                    store.clearSuggestedPathStop(
+                        for: request.cellID
+                    )
+
+                    suggestedPathStopPresentation =
+                        nil
+                }
+            )
+        }
+
         .sheet(
             item:
                 $presentedRouteTarget,
@@ -240,42 +323,30 @@ struct DayMapView: View {
         .onAppear {
 
             scene.interactionDelegate =
-                store
+                socketManager
 
 
-            store.startClock()
+            scene.setSemanticTapsEnabled(
+                store.focusedAlternativeRouteID == nil
+            )
+
+
+            socketManager.prepareDayMapForPresentation()
 
 
             scene.renderCurrentTime(
                 store.currentDayTime
             )
 
+            scene.renderCurrentProgress(
+                store.currentProgressPercent
+            )
+
             scene.renderSelection(
                 store.selection
             )
-            
+
             syncRouteLayers()
-            
-            store.useSimulatedClock(
-                speed: 60
-            )
-
-            store.resetSimulationDay(
-                to:
-                    DayTime(
-                        secondsFromMidnight:
-                            8 * 3600
-                    )
-            )
-            
-            //MARK: todo - remove for production
-            store.printDebugRouteVertices()
-            
-            store.installDebugRouteScenario()
-
-            store.installRouteRenderDemo(
-                .fullDayAllStates
-            )
        
 
         }
@@ -289,7 +360,7 @@ struct DayMapView: View {
                 nil
 
 
-            store.stopClock()
+            socketManager.dayMapDidDisappear()
         }
 
 
@@ -301,6 +372,18 @@ struct DayMapView: View {
                 true,
             currentDayTimeDidChange
         )
+
+        .onChange(
+            of:
+                store.currentProgressPercent,
+            initial:
+                true
+        ) { _, newPercent in
+
+            scene.renderCurrentProgress(
+                newPercent
+            )
+        }
         
         .onChange(
             of:
@@ -331,6 +414,16 @@ struct DayMapView: View {
                 newNodes
             )
         }
+
+        .onChange(
+            of:
+                store.revealedTileIDs
+        ) { _, newIDs in
+
+            scene.renderRevealedTiles(
+                newIDs
+            )
+        }
         
         .onChange(
             of:
@@ -358,15 +451,60 @@ struct DayMapView: View {
                 return
             }
 
-            roadNodeAddRequest =
-                newRequest
+            presentAddNode(
+                at:
+                    newRequest.coordinate
+            )
 
             store.consumePendingRoadNodeAddRequest()
+        }
+
+
+        .onChange(
+            of:
+                store.pendingSuggestedPathStopRequest
+        ) { _, newRequest in
+
+            guard let newRequest else {
+                return
+            }
+
+            suggestedPathStopPresentation =
+                newRequest
+
+            store.consumePendingSuggestedPathStopRequest()
         }
         
         .onChange(
             of:
                 store.routeState
+        ) { _, _ in
+
+            syncRouteLayers()
+        }
+
+        .onChange(
+            of:
+                store.focusedAlternativeRouteID
+        ) { _, newRouteID in
+
+            // Focused alternate-route preview is deliberately a camera-only
+            // map mode. Suppress semantic card/node taps while leaving the
+            // SpriteKit pan and pinch recognizers untouched.
+            scene.setSemanticTapsEnabled(
+                newRouteID == nil
+            )
+
+
+            // First tap on an alternate node changes presentation only: keep
+            // completed history plus exactly one alternate route in view.
+            syncRouteLayers()
+        }
+
+        .onChange(
+            of:
+                socketManager
+                    .currentUserAvatarAssetName
         ) { _, _ in
 
             syncRouteLayers()
@@ -407,26 +545,48 @@ struct DayMapView: View {
                         store.roadGraph,
                     onSave: { updatedNode in
 
-                        store.updateGameNode(
+                        socketManager.updateGameNode(
                             updatedNode
                         )
 
                     },
                     onDelete: {
 
-                        store.deleteGameNode(
+                        socketManager.deleteGameNode(
                             id:
                                 node.id
                         )
                     },
-                    onActivityAction:
-                        onActivityAction,
+                    onActivityAction: { action, updatedNode in
+
+                        socketManager.handleActivityNodeAction(
+                            action,
+                            node:
+                                updatedNode
+                        )
+
+                        onActivityAction?(
+                            action,
+                            updatedNode
+                        )
+                    },
                     isActivityOnChosenPath:
                         isNodeOnChosenPath(
                             node.id
                         ),
-                    onUserAction:
-                        onUserAction
+                    onUserAction: { action, updatedNode in
+
+                        socketManager.handleUserNodeAction(
+                            action,
+                            node:
+                                updatedNode
+                        )
+
+                        onUserAction?(
+                            action,
+                            updatedNode
+                        )
+                    }
                 )
                 
             }
@@ -447,8 +607,19 @@ struct DayMapView: View {
                 GameNodePostView(
                     node:
                         node,
-                    onAction:
-                        onPostAction
+                    onAction: { action, selectedNode in
+
+                        socketManager.handlePostNodeAction(
+                            action,
+                            node:
+                                selectedNode
+                        )
+
+                        onPostAction?(
+                            action,
+                            selectedNode
+                        )
+                    }
                 )
             }
         }
@@ -487,8 +658,19 @@ struct DayMapView: View {
                 GameNodeHyperlinkView(
                     node:
                         node,
-                    onAction:
-                        onHyperlinkAction
+                    onAction: { action, selectedNode in
+
+                        socketManager.handleHyperlinkNodeAction(
+                            action,
+                            node:
+                                selectedNode
+                        )
+
+                        onHyperlinkAction?(
+                            action,
+                            selectedNode
+                        )
+                    }
                 )
             }
         }
@@ -514,7 +696,7 @@ struct DayMapView: View {
                 } label: {
 
                     Label(
-                        "Edit Current Route",
+                        "Edit Current Path",
                         systemImage:
                             "pencil"
                     )
@@ -528,7 +710,7 @@ struct DayMapView: View {
                 } label: {
 
                     Label(
-                        "Build New Route",
+                        "Build New Path",
                         systemImage:
                             "plus"
                     )
@@ -538,7 +720,7 @@ struct DayMapView: View {
             } label: {
 
                 Label(
-                    "Route",
+                    "Path",
                     systemImage:
                         "point.topleft.down.to.point.bottomright.curvepath"
                 )
@@ -556,7 +738,7 @@ struct DayMapView: View {
             } label: {
 
                 Label(
-                    "Route",
+                    "Path",
                     systemImage:
                         "point.topleft.down.to.point.bottomright.curvepath"
                 )
@@ -593,7 +775,7 @@ private extension DayMapView {
                     
                     #if DEBUG
                     Menu(
-                        "Route Render Tests"
+                        "Path Render Tests"
                     ) {
 
                         Button(
@@ -778,7 +960,8 @@ private extension DayMapView {
                 )
 
 
-            case .roadEdgeTapped,
+            case .dayTileTapped,
+                 .roadEdgeTapped,
                  .roadVertexTapped,
                  .gameNodeTapped:
 
@@ -976,19 +1159,405 @@ private extension DayMapView {
     }
 
 
-    var newNodeInitialCoordinate:
-        MapCoordinate {
+    func presentAddNode(
+        at coordinate: MapCoordinate
+    ) {
 
-        MapCoordinate(
-            time:
-                store.currentDayTime,
-            progress:
-                MapProgress(
-                    50
-                )
+        // Record the intent before presentation rather than mutating the
+        // observable SocketManager from AddGameNodeView.onAppear. This keeps
+        // sheet construction side-effect free.
+        socketManager.nodeCreationSheetOpened(
+            at:
+                coordinate
+        )
+
+        addNodePresentation =
+            AddNodePresentation(
+                coordinate:
+                    coordinate
+            )
+    }
+
+
+}
+
+
+private struct AddNodePresentation:
+    Identifiable {
+
+    let id = UUID()
+
+    let coordinate:
+        MapCoordinate
+}
+
+
+
+// =====================================================
+// MARK: - Suggested Path Stop Review
+// =====================================================
+
+private struct SuggestedPathStopReviewView: View {
+
+    let request:
+        SuggestedPathStopRequest
+
+    let roadGraph:
+        RoadGraph
+
+    let onViewed:
+        () -> Void
+
+    let onEditOpened:
+        () -> Void
+
+    let onAccept:
+        (GameMapNode) -> Void
+
+    let onReject:
+        () -> Void
+
+
+    @State
+    private var draft:
+        GameMapNode
+
+    @State
+    private var isEditing =
+        false
+
+    @State
+    private var didRecordView =
+        false
+
+
+    init(
+        request: SuggestedPathStopRequest,
+        roadGraph: RoadGraph,
+        onViewed: @escaping () -> Void,
+        onEditOpened: @escaping () -> Void,
+        onAccept: @escaping (GameMapNode) -> Void,
+        onReject: @escaping () -> Void
+    ) {
+
+        self.request = request
+        self.roadGraph = roadGraph
+        self.onViewed = onViewed
+        self.onEditOpened = onEditOpened
+        self.onAccept = onAccept
+        self.onReject = onReject
+
+        _draft =
+            State(
+                initialValue:
+                    request
+                        .suggestion
+                        .makeGameNode(
+                            at: request.coordinate
+                        )
+            )
+    }
+
+
+    var body: some View {
+
+        NavigationStack {
+
+            Group {
+
+                if isEditing {
+
+                    GameNodeEditorForm(
+                        node: $draft,
+                        roadGraph: roadGraph,
+                        validationIssues:
+                            validation.issues
+                    )
+
+                } else {
+
+                    SuggestedStopContentPreview(
+                        node: draft
+                    )
+                }
+            }
+            .navigationTitle(
+                isEditing
+                ? "Edit Suggested Stop"
+                : "Suggested Stop"
+            )
+            .navigationBarTitleDisplayMode(
+                .inline
+            )
+            .toolbar {
+
+                if isEditing {
+
+                    ToolbarItem(
+                        placement: .cancellationAction
+                    ) {
+
+                        Button(
+                            "Cancel"
+                        ) {
+
+                            draft =
+                                request
+                                    .suggestion
+                                    .makeGameNode(
+                                        at: request.coordinate
+                                    )
+
+                            isEditing =
+                                false
+                        }
+                    }
+
+
+                    ToolbarItem(
+                        placement: .confirmationAction
+                    ) {
+
+                        Button(
+                            "Save"
+                        ) {
+
+                            guard validation.isValid else {
+                                return
+                            }
+
+                            draft =
+                                GameNodeNormalizer
+                                    .normalize(
+                                        draft
+                                    )
+
+                            isEditing =
+                                false
+                        }
+                        .disabled(
+                            !validation.isValid
+                        )
+                    }
+                }
+            }
+            .safeAreaInset(
+                edge: .bottom
+            ) {
+
+                if !isEditing {
+
+                    HStack(
+                        spacing: 12
+                    ) {
+
+                        Button(
+                            role: .destructive,
+                            action: onReject
+                        ) {
+
+                            Label(
+                                "Reject",
+                                systemImage: "xmark"
+                            )
+                            .frame(
+                                maxWidth: .infinity
+                            )
+                        }
+                        .buttonStyle(
+                            .bordered
+                        )
+
+
+                        Button {
+
+                            onEditOpened()
+                            isEditing = true
+
+                        } label: {
+
+                            Label(
+                                "Edit",
+                                systemImage: "pencil"
+                            )
+                            .frame(
+                                maxWidth: .infinity
+                            )
+                        }
+                        .buttonStyle(
+                            .bordered
+                        )
+
+
+                        Button {
+
+                            guard validation.isValid else {
+                                return
+                            }
+
+                            let normalized =
+                                GameNodeNormalizer
+                                    .normalize(
+                                        draft
+                                    )
+
+                            guard
+                                GameNodeValidator
+                                    .validate(
+                                        normalized,
+                                        roadGraph: roadGraph
+                                    )
+                                    .isValid
+                            else {
+                                return
+                            }
+
+                            onAccept(
+                                normalized
+                            )
+
+                        } label: {
+
+                            Label(
+                                "Accept",
+                                systemImage: "checkmark"
+                            )
+                            .frame(
+                                maxWidth: .infinity
+                            )
+                        }
+                        .buttonStyle(
+                            .borderedProminent
+                        )
+                        .disabled(
+                            !validation.isValid
+                        )
+                    }
+                    .padding(
+                        .horizontal
+                    )
+                    .padding(
+                        .vertical,
+                        10
+                    )
+                    .background(
+                        .ultraThinMaterial
+                    )
+                }
+            }
+        }
+        .presentationDetents(
+            [
+                .medium,
+                .large
+            ]
+        )
+        .onAppear {
+
+            guard !didRecordView else {
+                return
+            }
+
+            didRecordView = true
+            onViewed()
+        }
+    }
+}
+
+
+private extension SuggestedPathStopReviewView {
+
+    var validation:
+        GameNodeValidationResult {
+
+        GameNodeValidator.validate(
+            draft,
+            roadGraph: roadGraph
         )
     }
 }
+
+
+private struct SuggestedStopContentPreview: View {
+
+    let node:
+        GameMapNode
+
+
+    @ViewBuilder
+    var body: some View {
+
+        switch node.content {
+
+        case let .activity(content):
+
+            ActivityNodeDetailView(
+                content: content
+            )
+
+        case let .post(content):
+
+            PostNodeDetailView(
+                content: content
+            )
+
+        case let .hyperlink(content):
+
+            HyperlinkNodeDetailView(
+                content: content
+            )
+
+        case let .media(content):
+
+            MediaNodeMetadataView(
+                content: content
+            )
+
+        case let .user(content):
+
+            UserNodeDetailView(
+                content: content
+            )
+
+        case let .play(content):
+
+            VStack(
+                spacing: 18
+            ) {
+
+                Image(
+                    systemName: "play.fill"
+                )
+                .font(
+                    .system(
+                        size: 46,
+                        weight: .semibold
+                    )
+                )
+
+                Text(
+                    content.title
+                )
+                .font(
+                    .title2.weight(.bold)
+                )
+
+                Text(
+                    node.time.displayClockString
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity
+            )
+            .padding()
+        }
+    }
+}
+
 
 private extension DayMapView {
 
@@ -1001,8 +1570,7 @@ private extension DayMapView {
 
         case .showPlay:
 
-            socketManager.isShowingPlay =
-                true
+            socketManager.openPlay()
 
 
         case let .showUser(
@@ -1054,6 +1622,32 @@ private extension DayMapView {
         store.consumePendingNodeAction()
     }
 }
+
+private extension DayMapView {
+
+    func viewFocusedAlternativeRoute() {
+
+        guard let routeID =
+            store.focusedAlternativeRouteID
+        else {
+            return
+        }
+
+
+        presentedRouteTarget =
+            .alternative(
+                routeID:
+                    routeID
+            )
+    }
+
+
+    func closeFocusedAlternativeRoutePreview() {
+
+        store.closeAlternativeRoutePreview()
+    }
+}
+
 
 private extension DayMapView {
 
@@ -1164,10 +1758,23 @@ private extension DayMapView {
             RouteID
     ) -> Bool {
 
-        store.chooseFutureRoute(
-            routeID:
-                routeID
-        )
+        let succeeded =
+            socketManager.chooseFutureRoute(
+                routeID:
+                    routeID
+            )
+
+
+        if succeeded {
+
+            // Selecting the previewed alternate makes it the real chosen
+            // route, so preview mode and its interaction lock are no longer
+            // needed.
+            store.closeAlternativeRoutePreview()
+        }
+
+
+        return succeeded
     }
 }
 
@@ -1175,7 +1782,7 @@ private extension DayMapView {
 
     func openNewRouteBuilder() {
 
-        store
+        socketManager
             .beginNewFutureRouteDraft()
 
 
@@ -1226,7 +1833,7 @@ private extension DayMapView {
 
 
         let succeeded =
-            store
+            socketManager
                 .beginEditingChosenFutureRoute()
 
 
@@ -1249,7 +1856,12 @@ private extension DayMapView {
     func syncRouteLayers() {
 
         scene.renderRoutes(
-            store.routeRenderState
+            store.routeRenderState,
+            focusedAlternativeRouteID:
+                store.focusedAlternativeRouteID,
+            currentUserAvatarAssetName:
+                socketManager
+                    .currentUserAvatarAssetName
         )
 
 
@@ -1299,18 +1911,242 @@ private extension DayMapView {
 
         case .active:
 
-            store.startGameClock()
+            socketManager.startDayMapGameClock()
 
 
         case .inactive,
              .background:
 
-            store.stopGameClock()
+            socketManager.stopDayMapGameClock()
 
 
         @unknown default:
 
-            store.stopGameClock()
+            socketManager.stopDayMapGameClock()
         }
     }
 }
+
+// =====================================================
+// MARK: - Alternate Route Preview Overlay
+// =====================================================
+
+/// Lightweight preview controls shown after the first tap on an alternate
+/// GameNode card. The overlay itself does not cover the map with a hit-testing
+/// surface; only this compact control bar accepts touches. SpriteKit disables
+/// semantic taps separately, which preserves pan and pinch-to-zoom everywhere
+/// else on the map.
+private struct AlternateRoutePreviewOverlay: View {
+
+    let progressPercent:
+        Double?
+
+    let onViewRoute:
+        () -> Void
+
+    let onClose:
+        () -> Void
+
+
+    var body: some View {
+
+        HStack(
+            spacing:
+                12
+        ) {
+
+            Button(
+                action:
+                    onViewRoute
+            ) {
+
+                Label(
+                    "View Path",
+                    systemImage:
+                        "map.fill"
+                )
+                .font(
+                    .system(
+                        size: 14,
+                        weight: .semibold
+                    )
+                )
+                .lineLimit(
+                    1
+                )
+                .padding(
+                    .horizontal,
+                    13
+                )
+                .frame(
+                    minHeight:
+                        44
+                )
+            }
+            .buttonStyle(
+                .plain
+            )
+            .background(
+                Color.black.opacity(
+                    0.34
+                ),
+                in:
+                    RoundedRectangle(
+                        cornerRadius: 14,
+                        style: .continuous
+                    )
+            )
+
+
+            Spacer(
+                minLength:
+                    0
+            )
+
+
+            // This is intentionally informational rather than an actionable
+            // map control. It is styled as the middle preview button/pill the
+            // product spec calls for, but does not steal an extra action from
+            // the user.
+            VStack(
+                spacing:
+                    1
+            ) {
+
+                Text(
+                    previewPercentText
+                )
+                .font(
+                    .system(
+                        size: 20,
+                        weight: .bold,
+                        design: .rounded
+                    )
+                )
+
+
+                Text(
+                    "PREVIEW"
+                )
+                .font(
+                    .system(
+                        size: 9,
+                        weight: .bold
+                    )
+                )
+                .opacity(
+                    0.72
+                )
+            }
+            .padding(
+                .horizontal,
+                16
+            )
+            .frame(
+                minHeight:
+                    44
+            )
+            .background(
+                Color.white.opacity(
+                    0.13
+                ),
+                in:
+                    RoundedRectangle(
+                        cornerRadius: 14,
+                        style: .continuous
+                    )
+            )
+            .accessibilityElement(
+                children:
+                    .combine
+            )
+            .accessibilityLabel(
+                "Preview progress \(previewPercentText)"
+            )
+
+
+            Spacer(
+                minLength:
+                    0
+            )
+
+
+            Button(
+                action:
+                    onClose
+            ) {
+
+                Image(
+                    systemName:
+                        "xmark"
+                )
+                .font(
+                    .system(
+                        size: 16,
+                        weight: .bold
+                    )
+                )
+                .frame(
+                    width: 44,
+                    height: 44
+                )
+            }
+            .buttonStyle(
+                .plain
+            )
+            .background(
+                Color.black.opacity(
+                    0.34
+                ),
+                in:
+                    RoundedRectangle(
+                        cornerRadius: 14,
+                        style: .continuous
+                    )
+            )
+            .accessibilityLabel(
+                "Close alternate path preview"
+            )
+        }
+        .foregroundStyle(
+            .white
+        )
+        .padding(
+            10
+        )
+        .background(
+            .ultraThinMaterial,
+            in:
+                RoundedRectangle(
+                    cornerRadius: 20,
+                    style: .continuous
+                )
+        )
+        .overlay {
+
+            RoundedRectangle(
+                cornerRadius: 20,
+                style: .continuous
+            )
+            .stroke(
+                Color.white.opacity(
+                    0.18
+                ),
+                lineWidth: 1
+            )
+        }
+    }
+
+
+    private var previewPercentText:
+        String {
+
+        guard let progressPercent else {
+            return "--%"
+        }
+
+
+        return "\(Int(progressPercent.rounded()))%"
+    }
+}
+

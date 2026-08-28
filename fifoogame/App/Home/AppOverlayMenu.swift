@@ -44,10 +44,7 @@ struct AppOverlayMenu: View {
                 //MARK: add params
                 NavigationLink{ PostsView()} label: {
                     HStack(alignment: .center, spacing: 5) {
-                        Image("bolt")
-                            .resizable()
-                            .frame(width: 25, height: 25)
-                        Text("Tips & Requests")
+                        Text("📢 Tips   |   ✋ Requests")
                             .font(.system(size: 18))
                             .fontWeight(.semibold)
                             .foregroundStyle(.black)
@@ -59,7 +56,7 @@ struct AppOverlayMenu: View {
                 
                 NavigationLink{ ChatsView()} label: {
                     HStack(alignment: .center, spacing: 5) {
-                        Image("chat")
+                        Image("chat_bubbles")
                             .resizable()
                             .frame(width: 25, height: 25)
                         Text("My Chats")
@@ -73,12 +70,12 @@ struct AppOverlayMenu: View {
                 Divider()
                 
                 //MARK: add params?
-                NavigationLink{ RemindersView()} label: {
+                NavigationLink{ FriendsView()} label: {
                     HStack(alignment: .center, spacing: 5) {
-                        Image("bell")
+                        Image("people")
                             .resizable()
                             .frame(width: 25, height: 25)
-                        Text("My Reminders")
+                        Text("My Friends")
                             .font(.system(size: 18))
                             .fontWeight(.semibold)
                             .foregroundStyle(.black)

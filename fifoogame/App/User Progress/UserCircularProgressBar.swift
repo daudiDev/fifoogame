@@ -74,6 +74,17 @@ struct UserCircularProgressBar: View {
                 )
             }
 
+            // Give the percentage its own quiet, high-contrast center so it
+            // remains legible over the shared translucent top-row material.
+            Circle()
+                .fill(
+                    Color.black.opacity(0.58)
+                )
+                .frame(
+                    width: 31,
+                    height: 31
+                )
+
             // MARK: Percentage
 
             Text(percentageText)
@@ -84,13 +95,20 @@ struct UserCircularProgressBar: View {
                         design: .default
                     )
                 )
-                .foregroundStyle(.green)
+                .foregroundStyle(
+                    Color.green.opacity(0.98)
+                )
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(
                     0.7
                 )
-                .shadow(color: Color.black.opacity(0.2), radius: 1, x: 0, y: 1)
+                .shadow(
+                    color: Color.black.opacity(0.75),
+                    radius: 1.5,
+                    x: 0,
+                    y: 1
+                )
         }
         .frame(
             width: 50,

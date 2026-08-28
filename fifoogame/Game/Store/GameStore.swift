@@ -36,6 +36,92 @@ struct RoadNodeAddRequest:
 }
 
 
+/// Stop content supplied by the application for a specific empty path card.
+///
+/// This is deliberately real `GameNodeContent`, not a display-only teaser.
+/// Accepting the suggestion therefore creates the same `GameMapNode` model
+/// used everywhere else in the day map. The backend/app can populate these
+/// suggestions later without changing the map interaction contract.
+struct SuggestedPathStop:
+    Identifiable,
+    Equatable,
+    Sendable {
+
+    let id:
+        UUID
+
+    var content:
+        GameNodeContent
+
+
+    init(
+        id: UUID = UUID(),
+        content: GameNodeContent
+    ) {
+
+        self.id = id
+        self.content = content
+    }
+
+
+    func makeGameNode(
+        at coordinate: MapCoordinate
+    ) -> GameMapNode {
+
+        GameMapNode(
+            placement:
+                .coordinate(
+                    coordinate
+                ),
+            time:
+                coordinate.time,
+            content:
+                content
+        )
+    }
+}
+
+
+/// Presentation request emitted only when an empty path card has actual
+/// app-provided suggested content. Empty path cards with no suggestion bypass
+/// this request and use the normal Add Stop flow immediately.
+struct SuggestedPathStopRequest:
+    Identifiable,
+    Equatable,
+    Sendable {
+
+    let id:
+        UUID
+
+    let cellID:
+        GridCellID
+
+    let coordinate:
+        MapCoordinate
+
+    let routeTarget:
+        RouteInteractionTarget
+
+    let suggestion:
+        SuggestedPathStop
+
+
+    init(
+        cellID: GridCellID,
+        coordinate: MapCoordinate,
+        routeTarget: RouteInteractionTarget,
+        suggestion: SuggestedPathStop
+    ) {
+
+        self.id = UUID()
+        self.cellID = cellID
+        self.coordinate = coordinate
+        self.routeTarget = routeTarget
+        self.suggestion = suggestion
+    }
+}
+
+
 @MainActor
 final class GameStore: ObservableObject {
     
@@ -103,6 +189,26 @@ var debugRouteRenderStateOverride:
     @Published
     private(set) var gameNodes:
     [GameMapNode]
+
+    /// Explicitly revealed cards. This is presentation/gameplay state rather
+    /// than road state and can be persisted by the backend in a later step.
+    @Published
+    private(set) var revealedTileIDs:
+        Set<GridCellID> = []
+
+    /// When non-nil, the day map temporarily isolates exactly one alternate
+    /// route alongside completed history. The first tap on an alternate node
+    /// sets this focus; a later tap on a node belonging to the focused route
+    /// opens that node normally. Background/other-route interactions clear it.
+    @Published
+    private(set) var focusedAlternativeRouteID:
+        RouteID? = nil
+
+    /// Pass 3 defaults to the discovery-first behavior from the product
+    /// concept. Keeping the policy explicit makes it easy to run legacy/debug
+    /// fixtures without changing renderer code.
+    let tileRevealPolicy:
+        DayMapTileRevealPolicy
     
     @Published
     private(set) var pendingNodeAction:
@@ -118,6 +224,18 @@ var debugRouteRenderStateOverride:
     @Published
     private(set) var pendingRoadNodeAddRequest:
         RoadNodeAddRequest?
+
+    /// Application-provided suggestions keyed to exact day-map cards. Empty
+    /// cards without an entry here behave exactly like ordinary Add Stop cards.
+    @Published
+    private(set) var suggestedPathStopsByCell:
+        [GridCellID: SuggestedPathStop] = [:]
+
+    /// Emitted only when the tapped empty path card has supplied suggestion
+    /// content. DayMapView presents that content directly for review.
+    @Published
+    private(set) var pendingSuggestedPathStopRequest:
+        SuggestedPathStopRequest?
     
     @Published
     private(set) var futureRouteDraftPlan:
@@ -269,7 +387,10 @@ var debugRouteRenderStateOverride:
         RoadGraph = GridRoadGraph.make(),
         
         gameNodes:
-        [GameMapNode] = SampleGameNodes.make(),
+        [GameMapNode] = [],
+
+        tileRevealPolicy:
+        DayMapTileRevealPolicy = .discoveryFirst,
         
         now:
         Date = .now
@@ -280,6 +401,9 @@ var debugRouteRenderStateOverride:
         
         self.roadGraph =
         roadGraph
+
+        self.tileRevealPolicy =
+        tileRevealPolicy
         
         self.gameNodes =
         gameNodes.map { node in
@@ -307,6 +431,39 @@ var debugRouteRenderStateOverride:
             }
 
             return synchronized
+        }
+
+
+        switch tileRevealPolicy {
+
+        case .discoveryFirst:
+
+            // Ordinary nodes begin hidden. Route/preview cards are exposed by
+            // DayMapTileResolver without mutating this explicit discovery set.
+            self.revealedTileIDs = []
+
+        case .revealAllNodes:
+
+            self.revealedTileIDs =
+                Set(
+                    self.gameNodes.compactMap { node in
+
+                        guard let coordinate =
+                            GameNodePlacementResolver
+                                .mapCoordinate(
+                                    for: node,
+                                    graph: roadGraph
+                                )
+                        else {
+                            return nil
+                        }
+
+                        return GridMapGeometry
+                            .cellID(
+                                containing: coordinate
+                            )
+                    }
+                )
         }
         
         
@@ -349,7 +506,227 @@ var debugRouteRenderStateOverride:
         pendingRoadNodeAddRequest =
             nil
     }
+
+
+    func consumePendingSuggestedPathStopRequest() {
+
+        pendingSuggestedPathStopRequest =
+            nil
+    }
+
+
+    // =====================================================
+    // MARK: - Suggested Path Stops
+    // =====================================================
+
+    /// Supplies real stop content for one otherwise-empty path card. The app
+    /// or future socket payload can call this when it has a suggestion.
+    func setSuggestedPathStop(
+        _ suggestion: SuggestedPathStop,
+        for cellID: GridCellID
+    ) {
+
+        suggestedPathStopsByCell[cellID] =
+            suggestion
+    }
+
+
+    func suggestedPathStop(
+        for cellID: GridCellID
+    ) -> SuggestedPathStop? {
+
+        suggestedPathStopsByCell[cellID]
+    }
+
+
+    func clearSuggestedPathStop(
+        for cellID: GridCellID
+    ) {
+
+        suggestedPathStopsByCell.removeValue(
+            forKey: cellID
+        )
+    }
+
+
+    /// Programmatic equivalent of tapping a map node. Search and other
+    /// non-SpriteKit entry points use this so node selection/action resolution
+    /// remains in the domain store rather than being reimplemented in SwiftUI.
+    func requestGameNodeAction(
+        id nodeID: GameNodeID
+    ) {
+
+        var updated =
+            selection
+
+        updated.selectGameNode(
+            nodeID
+        )
+
+        selection =
+            updated
+
+        guard let node =
+            gameNode(
+                id:
+                    nodeID
+            )
+        else {
+
+            pendingNodeAction =
+                nil
+
+            return
+        }
+
+        pendingNodeAction =
+            GameNodeActionResolver
+                .action(
+                    for:
+                        node
+                )
+    }
     
+    // =====================================================
+    // MARK: - Tile Reveal State
+    // =====================================================
+
+    func revealTile(
+        _ id: GridCellID
+    ) {
+
+        revealedTileIDs.insert(id)
+    }
+
+
+    func hideTile(
+        _ id: GridCellID
+    ) {
+
+        revealedTileIDs.remove(id)
+    }
+
+
+    // =====================================================
+    // MARK: - Alternate Route Focus
+    // =====================================================
+
+    /// True when this alternate route is already the route isolated by the
+    /// user's first tap. SocketManager uses the same query so application
+    /// action logging mirrors the store's two-stage interaction semantics.
+    func isAlternativeRouteFocused(
+        _ routeID: RouteID
+    ) -> Bool {
+
+        focusedAlternativeRouteID == routeID
+    }
+
+
+    func focusAlternativeRoute(
+        _ routeID: RouteID
+    ) {
+
+        focusedAlternativeRouteID = routeID
+    }
+
+
+    func clearAlternativeRouteFocus() {
+
+        focusedAlternativeRouteID = nil
+    }
+
+
+    /// Ends the temporary alternate-route preview and returns the board to
+    /// its normal chosen-route presentation. Selection is cleared so the
+    /// alternate card does not retain a secondary selection highlight after
+    /// the preview overlay disappears.
+    func closeAlternativeRoutePreview() {
+
+        focusedAlternativeRouteID =
+            nil
+
+
+        selection.clear()
+
+
+        pendingNodeAction =
+            nil
+
+
+        pendingRouteAction =
+            nil
+    }
+
+
+    /// The preview percentage is the progress coordinate of the last
+    /// resolvable GameNode on the focused alternate route. The Fifoo day map
+    /// already defines X as progress, so this gives the overlay a meaningful
+    /// route-end progress preview without introducing a second scoring model.
+    var focusedAlternativePreviewProgressPercent:
+        Double? {
+
+        guard
+            let routeID = focusedAlternativeRouteID,
+            let route = futureRoute(
+                id: routeID
+            )
+        else {
+            return nil
+        }
+
+
+        for nodeID in
+            route.stopNodeIDs.reversed() {
+
+            guard
+                let node = gameNode(
+                    id: nodeID
+                ),
+                let coordinate =
+                    GameNodePlacementResolver
+                        .mapCoordinate(
+                            for: node,
+                            graph: roadGraph
+                        )
+            else {
+                continue
+            }
+
+
+            return coordinate
+                .progress
+                .percent
+        }
+
+
+        return currentProgressPercent
+    }
+
+
+    private func revealTileContaining(
+        _ node: GameMapNode
+    ) {
+
+        guard
+            let coordinate =
+                GameNodePlacementResolver
+                    .mapCoordinate(
+                        for: node,
+                        graph: roadGraph
+                    ),
+            let id =
+                GridMapGeometry
+                    .cellID(
+                        containing: coordinate
+                    )
+        else {
+            return
+        }
+
+        revealedTileIDs.insert(id)
+    }
+
+
     // =====================================================
     // MARK: - Game Node Editing
     // =====================================================
@@ -410,6 +787,10 @@ var debugRouteRenderStateOverride:
 
         gameNodes[index] =
         synchronized
+
+        revealTileContaining(
+            synchronized
+        )
         
         invalidateDraftPlanIfNeeded(
             changedNodeID:
@@ -504,6 +885,10 @@ var debugRouteRenderStateOverride:
         )
 
         gameNodes.append(
+            synchronized
+        )
+
+        revealTileContaining(
             synchronized
         )
         
@@ -1242,7 +1627,9 @@ var debugRouteRenderStateOverride:
         #if DEBUG
 
         if let debugRouteRenderStateOverride {
-            return debugRouteRenderStateOverride
+            return applyingAlternativeRouteFocus(
+                to: debugRouteRenderStateOverride
+            )
         }
 
         #endif
@@ -1375,7 +1762,35 @@ var debugRouteRenderStateOverride:
         )
         
         
-        return result
+        return applyingAlternativeRouteFocus(
+            to: result
+        )
+    }
+
+
+    /// Focus mode intentionally preserves completed history but removes the
+    /// chosen route and every unrelated alternate from the presentation. If
+    /// the focused route no longer exists, fall back to the normal render
+    /// state instead of leaving the map stranded in an empty focus mode.
+    private func applyingAlternativeRouteFocus(
+        to state: RouteRenderState
+    ) -> RouteRenderState {
+
+        guard
+            let focusedRouteID = focusedAlternativeRouteID,
+            let focusedAlternative = state.alternatives.first(
+                where: { $0.routeID == focusedRouteID }
+            )
+        else {
+            return state
+        }
+
+        return RouteRenderState(
+            completedSegments: state.completedSegments,
+            chosenFuture: nil,
+            alternatives: [focusedAlternative],
+            currentBoundary: state.currentBoundary
+        )
     }
     
     func consumePendingRouteAction() {
@@ -1531,7 +1946,7 @@ var debugRouteRenderStateOverride:
         else {
 
             print(
-                "❌ addStopToFutureRouteDraft: Node does not exist."
+                "❌ addStopToFutureRouteDraft: Stop does not exist."
             )
 
             return false
@@ -1551,7 +1966,7 @@ var debugRouteRenderStateOverride:
         else {
 
             print(
-                "⚠️ addStopToFutureRouteDraft: Node is already in the draft."
+                "⚠️ addStopToFutureRouteDraft: Stop is already in the draft."
             )
 
             return false
@@ -1600,7 +2015,7 @@ var debugRouteRenderStateOverride:
         #if DEBUG
 
         print(
-            "✅ Added route stop:",
+            "✅ Added path stop:",
             nodeID
         )
 
@@ -1959,7 +2374,7 @@ var debugRouteRenderStateOverride:
 
         print("")
         print("======================================")
-        print("FUTURE ROUTE DRAFT")
+        print("FUTURE PATH DRAFT")
         print("======================================")
 
         print(
@@ -1992,7 +2407,7 @@ var debugRouteRenderStateOverride:
             else {
 
                 print(
-                    "\(index + 1). Missing Node"
+                    "\(index + 1). Missing Stop"
                 )
 
                 continue
@@ -2633,7 +3048,7 @@ var debugRouteRenderStateOverride:
         else {
 
             print(
-                "❌ generateFutureRoutePreviewAlternatives: No future route draft plan."
+                "❌ generateFutureRoutePreviewAlternatives: No future path draft plan."
             )
 
             futureRoutePreview =
@@ -2668,7 +3083,7 @@ var debugRouteRenderStateOverride:
         else {
 
             print(
-                "❌ generateFutureRoutePreviewAlternatives: Planning result contains no route."
+                "❌ generateFutureRoutePreviewAlternatives: Planning result contains no path."
             )
 
             futureRoutePreview =
@@ -2684,7 +3099,7 @@ var debugRouteRenderStateOverride:
         else {
 
             print(
-                "❌ generateFutureRoutePreviewAlternatives: Primary route is not fully planned."
+                "❌ generateFutureRoutePreviewAlternatives: Primary path is not fully planned."
             )
 
             futureRoutePreview =
@@ -2887,10 +3302,10 @@ var debugRouteRenderStateOverride:
         #if DEBUG
 
         print("")
-        print("========== FUTURE ROUTE PREVIEW ==========")
+        print("========== FUTURE PATH PREVIEW ==========")
 
         print(
-            "Primary route:",
+            "Primary path:",
             primaryRoute.id
         )
 
@@ -3446,7 +3861,7 @@ var debugRouteRenderStateOverride:
 
         case .tooFewStops:
 
-            return "Select at least two future route stops."
+            return "Select at least two future path stops."
 
 
         case let .duplicateStop(
@@ -3462,7 +3877,7 @@ var debugRouteRenderStateOverride:
         ):
 
             return
-                "A selected route stop no longer exists: \(routeNodeTitle(nodeID))."
+                "A selected path stop no longer exists: \(routeNodeTitle(nodeID))."
 
 
         case let .nodeDisabled(
@@ -3478,7 +3893,7 @@ var debugRouteRenderStateOverride:
         ):
 
             return
-                "\(routeNodeTitle(nodeID)) is not connected to a valid road route."
+                "\(routeNodeTitle(nodeID)) is not connected to a valid road path."
 
 
         case let .stopIsInPast(
@@ -3495,7 +3910,7 @@ var debugRouteRenderStateOverride:
         ):
 
             return
-                "\(routeNodeTitle(laterNodeID)) occurs before \(routeNodeTitle(earlierNodeID)). Route stops must move forward through the day."
+                "\(routeNodeTitle(laterNodeID)) occurs before \(routeNodeTitle(earlierNodeID)). Path stops must move forward through the day."
         }
     }
     
@@ -4959,8 +5374,111 @@ extension GameStore:
             
             pendingNodeAction =
             nil
+
+            pendingRouteAction =
+            nil
+
+            clearAlternativeRouteFocus()
             
             selection.clear()
+
+
+            // =============================================
+            // Day Tile
+            // =============================================
+
+        case let .dayTileTapped(
+            cellID,
+            nodeID,
+            routeTarget,
+            isRevealed,
+            _,
+            mapCoordinate
+        ):
+
+            pendingNodeAction = nil
+            pendingRouteAction = nil
+
+            if !isRevealed {
+
+                clearAlternativeRouteFocus()
+
+                // Every concealed card, including a truly empty stop card,
+                // uses the same first-tap discovery mechanic. The first tap
+                // only flips/reveals the card; it never opens a sheet.
+                revealTile(
+                    cellID
+                )
+
+            } else if
+                let nodeID,
+                let routeTarget,
+                case let .alternative(routeID) = routeTarget
+            {
+
+                // Alternate nodes use a deliberate two-stage interaction:
+                // first tap isolates one route through the node; once that
+                // route is already focused, the next tap opens node details.
+                if isAlternativeRouteFocused(routeID) {
+
+                    requestGameNodeAction(
+                        id: nodeID
+                    )
+
+                } else {
+
+                    focusAlternativeRoute(routeID)
+
+                    var updated = selection
+                    updated.selectRoute(routeID)
+                    selection = updated
+                }
+
+            } else if let nodeID {
+
+                clearAlternativeRouteFocus()
+
+                requestGameNodeAction(
+                    id: nodeID
+                )
+
+            } else if let routeTarget {
+
+                // A revealed empty path card exposes an explicit Add Stop
+                // label. Tapping that label always opens the existing Add
+                // Stop sheet at this exact semantic card coordinate.
+                clearAlternativeRouteFocus()
+
+                if let routeID = routeTarget.routeID {
+
+                    var updated = selection
+                    updated.selectRoute(routeID)
+                    selection = updated
+
+                } else {
+
+                    selection.clear()
+                }
+
+                pendingRoadNodeAddRequest =
+                    RoadNodeAddRequest(
+                        coordinate: mapCoordinate
+                    )
+
+            } else {
+
+                clearAlternativeRouteFocus()
+
+                selection.clear()
+
+                // Compatibility bridge: DayMapView already observes this
+                // request to present AddGameNodeView. The type can be renamed
+                // once the backend/UI migration is complete.
+                pendingRoadNodeAddRequest =
+                    RoadNodeAddRequest(
+                        coordinate: mapCoordinate
+                    )
+            }
             
             
             // =============================================
@@ -5025,40 +5543,11 @@ extension GameStore:
             _,
             _
         ):
-            
-            var updated =
-            selection
-            
-            
-            updated.selectGameNode(
-                nodeID
+
+            requestGameNodeAction(
+                id:
+                    nodeID
             )
-            
-            
-            selection =
-            updated
-            
-            
-            guard let node =
-                    gameNode(
-                        id:
-                            nodeID
-                    )
-            else {
-                
-                pendingNodeAction =
-                nil
-                
-                return
-            }
-            
-            
-            pendingNodeAction =
-            GameNodeActionResolver
-                .action(
-                    for:
-                        node
-                )
             
             // =================================================
             // Route
@@ -5236,7 +5725,7 @@ extension GameStore {
 
 
         print("")
-        print("========== DEBUG ROUTE CORRIDOR ==========")
+        print("========== DEBUG PATH CORRIDOR ==========")
 
         print(
             "Current time:",
@@ -5368,7 +5857,7 @@ extension GameStore {
 
 
         print("")
-        print("========== ROUTE TEST VERTICES ==========")
+        print("========== PATH TEST VERTICES ==========")
 
 
         for (
@@ -5443,7 +5932,7 @@ private extension GameStore {
                             title,
 
                         description:
-                            "Debug day-map route fixture",
+                            "Debug day-map path fixture",
 
                         image:
                             nil
@@ -5483,7 +5972,7 @@ extension GameStore {
 
         print("")
         print("==========================================")
-        print("        INSTALL DEBUG ROUTE FIXTURE")
+        print("        INSTALL DEBUG PATH FIXTURE")
         print("==========================================")
 
         print(
@@ -5546,7 +6035,7 @@ extension GameStore {
 
                 print(
                     """
-                    ❌ Debug node is not in future.
+                    ❌ Debug stop is not in future.
                     Title: \(spec.title)
                     Time: \(vertex.coordinate.time.displayClockString)
                     """
@@ -5572,7 +6061,7 @@ extension GameStore {
 
                         print(
                             """
-                            ❌ Debug route-stop time order invalid.
+                            ❌ Debug path-stop time order invalid.
                             Stop: \(spec.title)
                             Time: \(vertex.coordinate.time.displayClockString)
                             """
@@ -5629,7 +6118,7 @@ extension GameStore {
 
             print(
                 """
-                \(spec.isRouteStop ? "🟢 ROUTE STOP" : "⚪ MAP NODE")
+                \(spec.isRouteStop ? "🟢 PATH STOP" : "⚪ MAP STOP")
                 \(spec.title)
                 Edge: \(spec.edgeID)
                 Time: \(vertex.coordinate.time.displayClockString)
@@ -5650,7 +6139,7 @@ extension GameStore {
         else {
 
             print(
-                "❌ Expected 12 debug nodes; got:",
+                "❌ Expected 12 debug stops; got:",
                 allNodeIDs.count
             )
 
@@ -5665,7 +6154,7 @@ extension GameStore {
         else {
 
             print(
-                "❌ Expected 6 route stops; got:",
+                "❌ Expected 6 path stops; got:",
                 routeStopIDs.count
             )
 
@@ -5693,16 +6182,16 @@ extension GameStore {
 
         print("")
         print(
-            "✅ Debug route scenario installed."
+            "✅ Debug path scenario installed."
         )
 
         print(
-            "Visible nodes:",
+            "Visible stops:",
             scenario.nodeCount
         )
 
         print(
-            "Chosen-route waypoints:",
+            "Chosen-path waypoints:",
             scenario.routeStopCount
         )
 
@@ -5731,7 +6220,7 @@ extension GameStore {
         else {
 
             print(
-                "❌ Install debug route scenario first."
+                "❌ Install debug path scenario first."
             )
 
             return
@@ -5745,7 +6234,7 @@ extension GameStore {
         else {
 
             print(
-                "❌ Debug scenario has too few route stops."
+                "❌ Debug scenario has too few path stops."
             )
 
             return
@@ -5754,7 +6243,7 @@ extension GameStore {
 
         print("")
         print("==========================================")
-        print("       BUILD DEBUG CHOSEN ROUTE")
+        print("       BUILD DEBUG CHOSEN PATH")
         print("==========================================")
 
 
@@ -5784,7 +6273,7 @@ extension GameStore {
             guard added else {
 
                 print(
-                    "❌ Could not add debug route stop:",
+                    "❌ Could not add debug path stop:",
                     nodeID
                 )
 
@@ -5814,7 +6303,7 @@ extension GameStore {
         else {
 
             print("")
-            print("❌ DEBUG ROUTE PLANNING FAILED")
+            print("❌ DEBUG PATH PLANNING FAILED")
 
             print(
                 planningResult
@@ -5845,7 +6334,7 @@ extension GameStore {
         else {
 
             print(
-                "❌ Debug route is not fully planned."
+                "❌ Debug path is not fully planned."
             )
 
             return
@@ -5853,10 +6342,10 @@ extension GameStore {
 
 
         print("")
-        print("✅ PRIMARY ROUTE PLANNED")
+        print("✅ PRIMARY PATH PLANNED")
 
         print(
-            "Route:",
+            "Path:",
             plannedRoute.id
         )
 
@@ -5894,7 +6383,7 @@ extension GameStore {
         else {
 
             print(
-                "❌ Failed to generate future route preview."
+                "❌ Failed to generate future path preview."
             )
 
             return
@@ -5902,7 +6391,7 @@ extension GameStore {
         
         print("")
         print(
-            "✅ Future route preview generated."
+            "✅ Future path preview generated."
         )
 
 
@@ -5949,7 +6438,7 @@ extension GameStore {
         // =====================================================
 
         print("")
-        print("========== POST-COMMIT ROUTE STATE ==========")
+        print("========== POST-COMMIT PATH STATE ==========")
 
         print(
             "Chosen:",
@@ -6008,7 +6497,7 @@ extension GameStore {
 
 
         print("")
-        print("========== FINAL DEBUG ROUTE STATE ==========")
+        print("========== FINAL DEBUG PATH STATE ==========")
 
 
         // =====================================================
@@ -6081,7 +6570,7 @@ extension GameStore {
                 """
                 ⚠️ TEST FIXTURE GENERATED ONLY \(alternatives.count) ALTERNATIVE(S).
 
-                The chosen route is valid, but AlternativeRouteGenerator
+                The chosen path is valid, but AlternativeRouteGenerator
                 did not find two sufficiently different valid paths.
                 """
             )
@@ -6102,7 +6591,7 @@ extension GameStore {
     func printDebugRouteState() {
 
         print("")
-        print("========== ROUTE STATE ==========")
+        print("========== PATH STATE ==========")
 
         print(
             "Completed segments:",
@@ -6422,3 +6911,106 @@ private extension GameStore {
 #endif
 
 
+
+
+// =====================================================
+// MARK: - Backend Synchronization
+// =====================================================
+
+extension GameStore {
+
+    /// Replaces the current map node collection with the server snapshot while
+    /// preserving the existing road graph as the local geometry source.
+    func replaceGameNodesFromServer(
+        _ nodes: [GameMapNode]
+    ) {
+
+        gameNodes =
+            nodes.map {
+                synchronizedNodeTime(
+                    $0
+                )
+            }
+
+        if tileRevealPolicy == .revealAllNodes {
+
+            for node in gameNodes {
+                revealTileContaining(node)
+            }
+        }
+
+        selection.clear()
+        pendingNodeAction = nil
+    }
+
+
+    /// Inserts a server node if it does not exist, otherwise replaces the
+    /// cached version. Incoming state is normalized against the local road
+    /// graph before becoming visible to SpriteKit/SwiftUI.
+    func upsertGameNodeFromServer(
+        _ node: GameMapNode
+    ) {
+
+        let synchronized =
+            synchronizedNodeTime(
+                node
+            )
+
+        if let index =
+            gameNodes.firstIndex(
+                where: {
+                    $0.id == node.id
+                }
+            ) {
+
+            gameNodes[index] =
+                synchronized
+
+        } else {
+
+            gameNodes.append(
+                synchronized
+            )
+        }
+
+        if tileRevealPolicy == .revealAllNodes {
+
+            revealTileContaining(
+                synchronized
+            )
+        }
+    }
+
+
+    func deleteGameNodeFromServer(
+        id: GameNodeID
+    ) {
+
+        deleteGameNode(
+            id: id
+        )
+    }
+
+
+    /// Server route state is already a validated semantic model. The map's
+    /// deterministic grid remains responsible for rendering the geometry.
+    func replaceRouteStateFromServer(
+        _ newRouteState: DayRouteState
+    ) {
+
+        routeState =
+            newRouteState
+
+        futureRouteDraft =
+            FutureRouteDraft()
+
+        futureRouteDraftPlan =
+            nil
+
+        futureRoutePreview =
+            nil
+
+        pendingRouteAction =
+            nil
+    }
+}

@@ -13,7 +13,6 @@ import AVKit
 
 struct PlayView: View {
     
-    private let session = WorkoutSessionManager.shared
     private let socketManager = SocketManager.shared
     private let soundManager = WorkoutSoundManager.shared
 
@@ -30,8 +29,6 @@ struct PlayView: View {
 
     @State private var autoPlaySecondsRemaining: Int = 0
     @State private var countdownGeneration: Int = 0
-
-    private let defaultExerciseDuration: TimeInterval = 120
 
     // MARK: - Workout UI
 
@@ -119,7 +116,7 @@ struct PlayView: View {
                 if showWorkoutCompletionView {
 
                     WorkoutCompletedView(
-                        workout: session.workout,
+                        workout: socketManager.workout,
 
                         onFinished: {
 
@@ -190,7 +187,7 @@ struct PlayView: View {
         // MARK: Workout Started / Resumed / Paused
 
         .onChange(
-            of: session.workout.status
+            of: socketManager.workout.status
         ) { oldStatus, newStatus in
 
             handleWorkoutStatusChange(
@@ -206,7 +203,7 @@ struct PlayView: View {
         ) { _, isShowing in
 
             if !isShowing,
-               session.workout.status == .active {
+               socketManager.workout.status == .active {
 
                 activateCurrentExerciseIfNeeded()
             }
@@ -226,7 +223,7 @@ struct PlayView: View {
         .task(
             id: CountdownTaskID(
                 exerciseID: currentExercise?.workoutExerciseId,
-                workoutStatus: session.workout.status,
+                workoutStatus: socketManager.workout.status,
                 exerciseStatus: currentExercise?.status,
                 generation: countdownGeneration
             )
@@ -258,7 +255,7 @@ private extension PlayView {
                     geometry: geometry,
                     workoutExercise: currentExercise,
                     isWorkoutPaused:
-                        session.workout.status == .paused
+                        socketManager.workout.status == .paused
                 )
                 // IMPORTANT:
                 // Forces SwiftUI to create a completely new
@@ -285,7 +282,7 @@ private extension PlayView {
                     geometry: geometry,
                     workoutExercise: nextExercise,
                     isWorkoutPaused:
-                        session.workout.status == .paused
+                        socketManager.workout.status == .paused
                 )
                 // IMPORTANT:
                 // The next exercise also has its own identity.
@@ -485,14 +482,14 @@ private extension PlayView {
 
         case .doneButton:
 
-            session.completeExercise(
+            socketManager.completeWorkoutExercise(
                 id:
                     exercise.workoutExerciseId
             )
 
         case .autoplay:
 
-            session.completeExercise(
+            socketManager.completeWorkoutExercise(
                 id:
                     exercise.workoutExerciseId
             )
@@ -502,7 +499,7 @@ private extension PlayView {
         // MARK: Workout Completion
 
         let progress =
-            session.workoutProgress()
+            socketManager.workoutProgress()
 
         if progress >= 1.0 {
 
@@ -569,7 +566,7 @@ private extension PlayView {
         let newIndex =
             currentExerciseIndex + 1
 
-        guard session.workout
+        guard socketManager.workout
             .exercises
             .indices
             .contains(newIndex)
@@ -626,49 +623,17 @@ private extension PlayView {
         _ exercise: WorkoutExercise
     ) {
 
-        guard exercise.status == .active ||
-                exercise.status == .paused else {
-            return
-        }
-
-        let elapsed =
-            elapsedTime(
-                for: exercise
-            )
-
-        let minimumDuration =
-            max(
-                0,
-                exercise.minDuration ?? 0
-            )
-
-        print(
-            """
-            Leaving exercise manually:
-            \(exercise.name)
-            elapsed: \(elapsed)
-            minDuration: \(minimumDuration)
-            """
-        )
-
-        // Requirement:
-        //
-        // Once the user has performed the exercise for at
-        // least minDuration, count it as completed.
-        //
-        // Otherwise it is skipped.
-        if elapsed >= minimumDuration {
-
-            session.completeExercise(
-                id: exercise.workoutExerciseId
-            )
-
-        } else {
-
-            session.skipExercise(
-                id: exercise.workoutExerciseId
-            )
-        }
+        _ =
+            socketManager
+                .finishWorkoutExerciseForManualAdvance(
+                    id:
+                        exercise.workoutExerciseId,
+                    elapsedTime:
+                        elapsedTime(
+                            for:
+                                exercise
+                        )
+                )
     }
 
 
@@ -678,7 +643,7 @@ private extension PlayView {
 
         let total =
             exercise.durationInSeconds
-            ?? defaultExerciseDuration
+            ?? socketManager.defaultWorkoutExerciseDuration
 
         return max(
             0,
@@ -726,7 +691,7 @@ private extension PlayView {
             return
         }
 
-        session.pauseExercise(
+        socketManager.pauseWorkoutExercise(
             id: exercise.workoutExerciseId
         )
 
@@ -754,9 +719,9 @@ private extension PlayView {
         // remained paused.
         //
         // The countdown requires BOTH to be active.
-        if session.workout.status == .paused {
+        if socketManager.workout.status == .paused {
 
-            session.resumeWorkout()
+            socketManager.resumeWorkoutSession()
         }
 
 
@@ -764,7 +729,7 @@ private extension PlayView {
 
         if exercise.status == .paused {
 
-            session.resumeExercise(
+            socketManager.resumeWorkoutExercise(
                 id: exercise.workoutExerciseId
             )
         }
@@ -774,7 +739,7 @@ private extension PlayView {
         // the exercise, this check prevents duplicate work.
         if currentExercise?.status == .paused {
 
-            session.resumeExercise(
+            socketManager.resumeWorkoutExercise(
                 id: exercise.workoutExerciseId
             )
         }
@@ -806,7 +771,7 @@ private extension PlayView {
             exercise.workoutExerciseId
 
         // BOTH must be active.
-        guard session.workout.status ==
+        guard socketManager.workout.status ==
                 .active else {
             return
         }
@@ -838,7 +803,7 @@ private extension PlayView {
                 return
             }
 
-            guard session.workout.status ==
+            guard socketManager.workout.status ==
                     .active else {
                 return
             }
@@ -866,7 +831,7 @@ private extension PlayView {
             return
         }
 
-        guard session.workout.status ==
+        guard socketManager.workout.status ==
                 .active else {
             return
         }
@@ -899,13 +864,13 @@ private extension PlayView {
 
     var currentExercise: WorkoutExercise? {
 
-        guard session.workout.exercises.indices.contains(
+        guard socketManager.workout.exercises.indices.contains(
             currentExerciseIndex
         ) else {
             return nil
         }
 
-        return session.workout.exercises[
+        return socketManager.workout.exercises[
             currentExerciseIndex
         ]
     }
@@ -916,13 +881,13 @@ private extension PlayView {
         let index =
             currentExerciseIndex + 1
 
-        guard session.workout.exercises.indices.contains(
+        guard socketManager.workout.exercises.indices.contains(
             index
         ) else {
             return nil
         }
 
-        return session.workout.exercises[
+        return socketManager.workout.exercises[
             index
         ]
     }
@@ -946,7 +911,7 @@ private extension PlayView {
             return false
         }
 
-        guard session.workout.status ==
+        guard socketManager.workout.status ==
                 .active else {
             return false
         }
@@ -972,11 +937,11 @@ private extension PlayView {
             initialExerciseIndex()
 
         showWorkoutStatusOverlay =
-            session.workout.status != .active
+            socketManager.workout.status != .active
 
         initializeCountdownForCurrentExercise()
 
-        if session.workout.status ==
+        if socketManager.workout.status ==
             .active {
 
             activateCurrentExerciseIfNeeded()
@@ -987,13 +952,13 @@ private extension PlayView {
     func initialExerciseIndex() -> Int {
 
         guard let currentID =
-                session.workout
+                socketManager.workout
                     .currentWorkoutExerciseID
         else {
             return 0
         }
 
-        return session.workout.exercises
+        return socketManager.workout.exercises
             .firstIndex {
 
                 $0.workoutExerciseId ==
@@ -1017,9 +982,10 @@ private extension PlayView {
             return
         }
 
-        session.workout
-            .currentWorkoutExerciseID =
+        socketManager.selectCurrentWorkoutExercise(
+            id:
                 exercise.workoutExerciseId
+        )
 
         if resetCountdown {
 
@@ -1030,16 +996,16 @@ private extension PlayView {
 
         case .notStarted:
 
-            session.startExercise(
+            socketManager.startWorkoutExercise(
                 id: exercise.workoutExerciseId
             )
 
         case .paused:
 
-            if session.workout.status ==
+            if socketManager.workout.status ==
                 .active {
 
-                session.resumeExercise(
+                socketManager.resumeWorkoutExercise(
                     id: exercise.workoutExerciseId
                 )
             }
@@ -1070,7 +1036,7 @@ private extension PlayView {
         autoPlaySecondsRemaining =
             Int(
                 exercise.durationInSeconds
-                ?? defaultExerciseDuration
+                ?? socketManager.defaultWorkoutExerciseDuration
             )
     }
 }
@@ -1130,10 +1096,10 @@ private extension PlayView {
         case .inactive,
              .background:
 
-            if session.workout.status ==
+            if socketManager.workout.status ==
                 .active {
 
-                session.pauseWorkout()
+                socketManager.pauseWorkoutSession()
             }
 
             // Preserve timer value.
@@ -1156,10 +1122,10 @@ private extension PlayView {
         countdownGeneration += 1
         autoPlaySecondsRemaining = 0
 
-        if session.workout.status !=
+        if socketManager.workout.status !=
             .completed {
 
-            session.completeWorkout()
+            socketManager.completeWorkoutSession()
         }
 
         withAnimation(
@@ -1181,17 +1147,20 @@ private extension PlayView {
 
     func pauseWorkoutForExit() {
 
-        if session.workout.status ==
+        if socketManager.workout.status ==
             .active {
 
-            session.pauseWorkout()
+            socketManager.pauseWorkoutSession()
         }
 
         countdownGeneration += 1
 
         // Add dismiss/navigation here.
         
-        socketManager.isShowingPlay = false
+        socketManager.closePlay(
+            pauseActiveWorkout:
+                false
+        )
         
     }
 }

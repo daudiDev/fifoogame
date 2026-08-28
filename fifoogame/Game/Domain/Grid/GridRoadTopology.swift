@@ -751,7 +751,7 @@ enum GridRoadTopology {
             && routeDirections.contains(.right)
             && routeDirections.contains(.down)
             && !routeDirections.contains(.up),
-            "Fifoo route topology must expose left/right/down and never up.",
+            "Fifoo path topology must expose left/right/down and never up.",
             file: file,
             line: line
         )

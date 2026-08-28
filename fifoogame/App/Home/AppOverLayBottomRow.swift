@@ -11,8 +11,8 @@ struct AppOverLayBottomRow: View {
     private let socketManager = SocketManager.shared
     var geo: GeometryProxy
     @Binding var isShowingSearchView: Bool
-    @Binding var isShowingAddNode: Bool
     @Binding var isShowingHomeMenuView: Bool
+    let onAddNodeTapped: () -> Void
     
     var body: some View {
         HStack(alignment: .center) {
@@ -34,7 +34,7 @@ struct AppOverLayBottomRow: View {
                 
                 Button {
                     
-                    socketManager.isShowingPlay = true
+                    socketManager.openPlay()
                     
                 } label: {
                     Text(Image(systemName: "play.square.stack.fill"))
@@ -47,10 +47,9 @@ struct AppOverLayBottomRow: View {
                 
 
                 Button {
-                    
-                    isShowingAddNode =
-                    true
-                    
+
+                    onAddNodeTapped()
+
                 } label: {
                     
                     Text(Image(systemName: "plus.circle.fill"))
@@ -72,7 +71,9 @@ struct AppOverLayBottomRow: View {
                     ZStack {
                         //MARK: add user profile image
                         HStack(alignment: .center) {
-                            Image("placeholder")
+                            Image(
+                                socketManager.currentUserAvatarAssetName
+                            )
                                 .resizable()
                                 .frame(width: 40, height: 40)
                                 .background(
@@ -85,7 +86,9 @@ struct AppOverLayBottomRow: View {
                         HStack {
                             Spacer()
                             VStack {
-                                Text("8")
+                                Text(
+                                    "\(socketManager.pendingHomeActionCount)"
+                                )
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(.white)
                                     .padding(5)

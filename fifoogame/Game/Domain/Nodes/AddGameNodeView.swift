@@ -1,8 +1,8 @@
 //
-//  AddGameNodeView.swift
+//  AddGameNodeView 2.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/24/26.
+//  Created by Daudi Sagala on 8/25/26.
 //
 
 
@@ -23,157 +23,195 @@ struct AddGameNodeView: View {
         (GameMapNode) -> Void
 
 
-    @Environment(\.dismiss)
-    private var dismiss
-
-
     var body: some View {
 
         NavigationStack {
-
-            List {
-
-                ForEach(
-                    AddGameNodeType.allCases
-                ) { addType in
-
-                    Section {
-
-                        NavigationLink {
-
-                            NewGameNodeEditorScreen(
-                                addType:
-                                    addType,
-                                initialCoordinate:
-                                    initialCoordinate,
-                                roadGraph:
-                                    roadGraph,
-                                onAdd:
-                                    onAdd
-                            )
-
-                        } label: {
-
-                            AddGameNodeTypeRow(
-                                addType:
-                                    addType
-                            )
-                        }
-
-                    } header: {
-
-                        Text(
-                            addType.displayName
-                        )
-
-                    } footer: {
-
-                        Text(
-                            addType.description
-                        )
-                    }
+            VStack {
+                HStack {
+                    Spacer()
+                    Text("Add Stop to Path")
+                        .font(.title)
+                        .foregroundStyle(.white)
+                        .padding(.vertical)
+                    Spacer()
                 }
+                
+                Spacer()
+                // Row 1 — Meal / Workout
+                HStack {
+                    
+                    Spacer()
+                    AddGameNodeEmojiButton(
+                        addType:
+                                .meal,
+                        emoji:
+                            "🍲"
+                    )
+                    Spacer()
+                    
+                    AddGameNodeEmojiButton(
+                        addType:
+                                .workout,
+                        emoji:
+                            "🏋🏻‍♂️"
+                    )
+                    
+                    Spacer()
+                }
+                
+                Spacer()
+                
+                // Row 2 — Task
+                HStack {
+                    
+                    Spacer()
+                    
+                    
+                    AddGameNodeEmojiButton(
+                        addType:
+                                .task,
+                        emoji:
+                            "🤹"
+                    )
+                    
+                    
+                    Spacer()
+                }
+                
+                Spacer()
+                
+                // Row 3 — Tip / Request
+                HStack {
+                    Spacer()
+                    AddGameNodeEmojiButton(
+                        addType:
+                                .tip,
+                        emoji:
+                            "📢"
+                    )
+                    
+                    Spacer()
+                    
+                    AddGameNodeEmojiButton(
+                        addType:
+                                .request,
+                        emoji:
+                            "✋"
+                    )
+                    Spacer()
+                }
+                
+                Spacer()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
+            .background( Color(red: 26 / 255, green: 38 / 255, blue: 50 / 255))
             .navigationTitle(
-                "Add Node"
-            )
-            .navigationBarTitleDisplayMode(
-                .inline
-            )
-            .toolbar {
-
-                ToolbarItem(
-                    placement:
-                        .cancellationAction
-                ) {
-
-                    Button(
-                        "Cancel"
-                    ) {
-
-                        dismiss()
-                    }
-                }
+                            "|||||||||||||||"
+                        )
+                        .navigationBarTitleDisplayMode(
+                            .inline
+                        )
+            .navigationDestination(
+                for:
+                    AddGameNodeType.self
+            ) { addType in
+                
+                NewGameNodeEditorScreen(
+                    addType:
+                        addType,
+                    initialCoordinate:
+                        initialCoordinate,
+                    roadGraph:
+                        roadGraph,
+                    onAdd:
+                        onAdd
+                )
             }
         }
     }
 }
 
 
-private struct AddGameNodeTypeRow: View {
+private struct AddGameNodeEmojiButton: View {
 
     let addType:
         AddGameNodeType
 
 
+    let emoji:
+        String
+
+
     var body: some View {
 
-        HStack(
-            spacing:
-                14
+        NavigationLink(
+            value:
+                addType
         ) {
 
-            Image(
-                systemName:
-                    addType.systemImageName
+            Text(
+                emoji
             )
             .font(
                 .system(
                     size:
-                        20,
-                    weight:
-                        .semibold
+                        70
                 )
             )
             .frame(
                 width:
-                    40,
+                    124,
                 height:
-                    40
+                    124
             )
             .background(
-                Circle()
-                    .fill(
-                        .secondary
-                            .opacity(
-                                0.12
-                            )
-                    )
+                RoundedRectangle(
+                    cornerRadius:
+                        30,
+                    style:
+                        .continuous
+                )
+                .fill(
+                    .ultraThickMaterial
+                )
             )
+            .overlay {
 
-
-            VStack(
-                alignment:
-                    .leading,
-                spacing:
-                    3
-            ) {
-
-                Text(
-                    "Add \(addType.displayName)"
+                RoundedRectangle(
+                    cornerRadius:
+                        30,
+                    style:
+                        .continuous
                 )
-                .font(
-                    .headline
-                )
-
-
-                Text(
-                    addType.backingModelDescription
-                )
-                .font(
-                    .caption
-                )
-                .foregroundStyle(
-                    .secondary
+                .stroke(
+                    .primary
+                        .opacity(
+                            0.08
+                        ),
+                    lineWidth:
+                        1
                 )
             }
-
-
-            Spacer()
+            .shadow(
+                color:
+                    .black
+                        .opacity(
+                            0.08
+                        ),
+                radius:
+                    10,
+                x:
+                    0,
+                y:
+                    6
+            )
         }
-        .padding(
-            .vertical,
-            4
+        .buttonStyle(
+            .plain
+        )
+        .accessibilityLabel(
+            addType.displayName
         )
     }
 }
@@ -183,6 +221,10 @@ private struct NewGameNodeEditorScreen: View {
 
     let addType:
         AddGameNodeType
+
+
+    let initialCoordinate:
+        MapCoordinate
 
 
     let roadGraph:
@@ -198,6 +240,11 @@ private struct NewGameNodeEditorScreen: View {
         GameMapNode
 
 
+    @State
+    private var didRecordTypeSelection =
+        false
+
+
     init(
         addType: AddGameNodeType,
         initialCoordinate: MapCoordinate,
@@ -207,6 +254,10 @@ private struct NewGameNodeEditorScreen: View {
 
         self.addType =
             addType
+
+
+        self.initialCoordinate =
+            initialCoordinate
 
 
         self.roadGraph =
@@ -220,12 +271,13 @@ private struct NewGameNodeEditorScreen: View {
         _draft =
             State(
                 initialValue:
-                    GameNodeFactory.make(
-                        addType:
-                            addType,
-                        coordinate:
-                            initialCoordinate
-                    )
+                    SocketManager.shared
+                        .makeNewGameNodeDraft(
+                            addType:
+                                addType,
+                            coordinate:
+                                initialCoordinate
+                        )
             )
     }
 
@@ -298,6 +350,26 @@ private struct NewGameNodeEditorScreen: View {
                     !validation.isValid
                 )
             }
+        }
+        .onAppear {
+
+            guard
+                !didRecordTypeSelection
+            else {
+
+                return
+            }
+
+            didRecordTypeSelection =
+                true
+
+            SocketManager.shared
+                .nodeCreationTypeSelected(
+                    addType:
+                        addType,
+                    coordinate:
+                        initialCoordinate
+                )
         }
     }
 }

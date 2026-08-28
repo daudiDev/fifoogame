@@ -36,41 +36,6 @@
 			);
 			target = 278C62C63034DC7200E5F340 /* fifoogame */;
 		};
-		274E99A4303803520075F87C /* Exceptions for "fifoogame" folder in "fifoogameTests" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				App/Calendar/ActivityDetailsView.swift,
-				App/Calendar/CalendarUserRequestImagesRow.swift,
-				App/Calendar/CalendarView.swift,
-				App/Calendar/EventItemUserImagesRow.swift,
-				App/Calendar/InfiniteDayCalendarView.swift,
-				App/SocketManager.swift,
-				"FIfoo Play/Play Views/Media Views/ExerciseInstructionsView.swift",
-				"FIfoo Play/Play Views/Media Views/FullScreenImageView.swift",
-				"FIfoo Play/Play Views/Media Views/FullScreenVideoView.swift",
-				"FIfoo Play/Play Views/PlayOverlay.swift",
-				"FIfoo Play/Play Views/PlayView.swift",
-				"FIfoo Play/Play Views/Sound Files/levelup.wav",
-				"FIfoo Play/Play Views/Sound Files/swish.wav",
-				"FIfoo Play/Play Views/Workout LifeCycle/PedometerManager.swift",
-				"FIfoo Play/Play Views/Workout LifeCycle/WorkoutModel.swift",
-				"FIfoo Play/Play Views/Workout LifeCycle/WorkoutSessionManager.swift",
-				"FIfoo Play/Play Views/Workout LifeCycle/WorkoutSoundManager.swift",
-				"FIfoo Play/Play Views/Workout LifeCycle/WorkoutVoiceManager.swift",
-				"FIfoo Play/Play Views/Workout Live/FloatingHeartsView.swift",
-				"FIfoo Play/Play Views/Workout Live/WorkoutLiveMessage.swift",
-				"FIfoo Play/Play Views/Workout Live/WorkoutLiveMessageStream.swift",
-				"FIfoo Play/Play Views/Workout Live/WorkoutLiveOverlay.swift",
-				"FIfoo Play/Play Views/Workout Live/WorkoutMoodEmojiPicker.swift",
-				"FIfoo Play/Play Views/Workout Progress Views/WorkoutCircularProgressBar.swift",
-				"FIfoo Play/Play Views/Workout Progress Views/WorkoutCompletedView.swift",
-				"FIfoo Play/Play Views/Workout Progress Views/WorkoutProgressReportView.swift",
-				"FIfoo Play/Play Views/Workout Progress Views/WorkoutProgressStatus.swift",
-				"FIfoo Play/Play Views/Workout Progress Views/WorkoutStatusOverlay.swift",
-				"FIfoo Play/Play Views/WorkoutExercise Model/WorkoutExerciseModel.swift",
-			);
-			target = 278C62F43034EFC900E5F340 /* fifoogameTests */;
-		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -78,7 +43,6 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				274E98183037F0360075F87C /* Exceptions for "fifoogame" folder in "fifoogame" target */,
-				274E99A4303803520075F87C /* Exceptions for "fifoogame" folder in "fifoogameTests" target */,
 			);
 			path = fifoogame;
 			sourceTree = "<group>";

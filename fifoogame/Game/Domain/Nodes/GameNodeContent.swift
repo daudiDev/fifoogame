@@ -172,7 +172,7 @@ enum GameNodeImage:
     /// Legacy SF Symbol source retained only so older persisted node data
     /// can still decode. Map markers no longer render SF Symbols; this
     /// case resolves to the node-type placeholder image.
-    @available(*, deprecated, message: "Map nodes use asset/remote images. SF Symbols render as type placeholders.")
+    @available(*, deprecated, message: "Map stops use asset/remote images. SF Symbols render as type placeholders.")
     case systemSymbol(
         name: String
     )

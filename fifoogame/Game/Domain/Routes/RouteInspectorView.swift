@@ -54,41 +54,41 @@ struct RouteInspectorView: View {
                 case .completed:
 
                     routeNodeSection(
-                        title: "Completed Nodes",
+                        title: "Completed Stops",
                         nodes: completedNodes,
-                        emptyMessage: "No completed nodes yet."
+                        emptyMessage: "No completed stops yet."
                     )
 
 
                 case .chosen:
 
                     routeNodeSection(
-                        title: "Completed Nodes",
+                        title: "Completed Stops",
                         nodes: completedNodes,
-                        emptyMessage: "No completed nodes yet."
+                        emptyMessage: "No completed stops yet."
                     )
 
 
                     routeNodeSection(
-                        title: "Chosen Nodes",
+                        title: "Chosen Stops",
                         nodes: inspectedNodes,
-                        emptyMessage: "No nodes are available on the chosen route."
+                        emptyMessage: "No stops are available on the chosen path."
                     )
 
 
                 case .alternative:
 
                     routeNodeSection(
-                        title: "Completed Nodes",
+                        title: "Completed Stops",
                         nodes: completedNodes,
-                        emptyMessage: "No completed nodes yet."
+                        emptyMessage: "No completed stops yet."
                     )
 
 
                     routeNodeSection(
-                        title: "Alternate Nodes",
+                        title: "Alternate Stops",
                         nodes: inspectedNodes,
-                        emptyMessage: "No nodes are available on this alternate route."
+                        emptyMessage: "No stops are available on this alternate path."
                     )
                 }
             }
@@ -144,7 +144,7 @@ struct RouteInspectorView: View {
                 }
             }
             .alert(
-                "Route Cannot Be Selected",
+                "Path Cannot Be Selected",
                 isPresented:
                     $routeSwitchFailed
             ) {
@@ -160,7 +160,7 @@ struct RouteInspectorView: View {
             } message: {
 
                 Text(
-                    "This route no longer connects to your current completed-route position."
+                    "This path no longer connects to your current completed-path position."
                 )
             }
         }
@@ -181,17 +181,17 @@ private extension RouteInspectorView {
 
         case .completed:
 
-            return "Completed Route"
+            return "Completed Path"
 
 
         case .chosen:
 
-            return "Chosen Route"
+            return "Chosen Path"
 
 
         case .alternative:
 
-            return "Alternate Route"
+            return "Alternate Path"
         }
     }
 }

@@ -13,9 +13,7 @@ import SwiftUI
 struct PlayOverlay: View {
     
     private let socketManager = SocketManager.shared
-    private let session = WorkoutSessionManager.shared
     private let pedometer = PedometerManager.shared
-    private let voiceManager = WorkoutVoiceManager.shared
 
     let geometry: GeometryProxy
     let workoutExercise: WorkoutExercise
@@ -418,7 +416,7 @@ private extension PlayOverlay {
 
                 WorkoutCircularProgressBar(
                     progress:
-                        session.workoutProgress()
+                        socketManager.workoutProgress()
                 )
             }
             .sheet(
@@ -480,7 +478,7 @@ private extension PlayOverlay {
             //
             // The workout itself may be paused while the
             // exercise model still reports .active.
-            if session.workout.status ==
+            if socketManager.workout.status ==
                 .paused {
 
                 resumeButton
@@ -493,7 +491,7 @@ private extension PlayOverlay {
 
         case .notStarted:
 
-            if session.workout.status ==
+            if socketManager.workout.status ==
                 .paused {
 
                 resumeButton
@@ -656,7 +654,7 @@ private extension PlayOverlay {
 
         workoutExercise.status == .paused
         ||
-        session.workout.status == .paused
+        socketManager.workout.status == .paused
     }
 }
 
@@ -669,7 +667,7 @@ private extension PlayOverlay {
 
         if workoutExercise.status ==
             .active,
-           session.workout.status ==
+           socketManager.workout.status ==
             .active {
 
             return
@@ -705,7 +703,7 @@ private extension PlayOverlay {
 
         if workoutExercise.status ==
             .active,
-           session.workout.status ==
+           socketManager.workout.status ==
             .active {
 
             return
@@ -1236,7 +1234,7 @@ private extension PlayOverlay {
         _ emoji: String
     ) {
 
-        socketManager.sendReaction(
+        socketManager.sendWorkoutReaction(
             emoji: emoji
         )
     }
@@ -1250,13 +1248,13 @@ private extension PlayOverlay {
 
         Button {
 
-            voiceManager.toggleMute()
+            socketManager.toggleWorkoutVoiceMute()
 
         } label: {
 
             Image(
                 systemName:
-                    voiceManager.isMuted
+                    socketManager.isWorkoutVoiceMuted
                     ? "speaker.slash.fill"
                     : "speaker.wave.2.fill"
             )
@@ -1267,7 +1265,7 @@ private extension PlayOverlay {
                 )
             )
             .foregroundStyle(
-                voiceManager.isMuted
+                socketManager.isWorkoutVoiceMuted
                 ? .gray
                 : .blue
             )
@@ -1294,7 +1292,7 @@ private extension PlayOverlay {
         // Accessibility
 
         .accessibilityLabel(
-            voiceManager.isMuted
+            socketManager.isWorkoutVoiceMuted
             ? "Unmute workout voice"
             : "Mute workout voice"
         )

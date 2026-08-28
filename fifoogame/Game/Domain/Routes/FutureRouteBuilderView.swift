@@ -12,6 +12,9 @@ import SwiftUI
 
 struct FutureRouteBuilderView: View {
 
+    private let socketManager =
+        SocketManager.shared
+
     // =====================================================
     // MARK: - Dependencies
     // =====================================================
@@ -70,7 +73,7 @@ struct FutureRouteBuilderView: View {
                 .inline
             )
             .alert(
-                "Route Could Not Be Planned",
+                "Path Could Not Be Planned",
                 isPresented:
                     $planningFailed
             ) {
@@ -96,7 +99,7 @@ struct FutureRouteBuilderView: View {
                             .always
                     ),
                 prompt:
-                    "Search route stops"
+                    "Search path stops"
             )
             .toolbar {
 
@@ -116,7 +119,7 @@ struct FutureRouteBuilderView: View {
                     },
                     onCancel: {
 
-                        store.clearFutureRoutePreview()
+                        socketManager.clearFutureRoutePreview()
 
                         isShowingPreview =
                             false
@@ -149,7 +152,7 @@ private extension FutureRouteBuilderView {
                 ) {
 
                     Text(
-                        "Future Route"
+                        "Future Path"
                     )
                     .font(
                         .headline
@@ -185,7 +188,7 @@ private extension FutureRouteBuilderView {
         } header: {
 
             Text(
-                "Route Draft"
+                "Path Draft"
             )
             
             if let plan =
@@ -230,7 +233,7 @@ private extension FutureRouteBuilderView {
 
 
                 Label(
-                    "Your current route remains active until you confirm a replacement.",
+                    "Your current path remains active until you confirm a replacement.",
                     systemImage:
                         "pencil.and.list.clipboard"
                 )
@@ -266,7 +269,7 @@ private extension FutureRouteBuilderView {
 
         case 1:
 
-            return "Choose one more stop to create a route."
+            return "Choose one more stop to create a path."
 
 
         default:
@@ -303,7 +306,7 @@ private extension FutureRouteBuilderView {
                         "point.topleft.down.to.point.bottomright.curvepath",
                     description:
                         Text(
-                            "Add future map nodes below to build your route."
+                            "Add future map stops below to build your path."
                         )
                 )
 
@@ -314,7 +317,7 @@ private extension FutureRouteBuilderView {
                 if store.futureRouteDraft.stopCount == 0 {
 
                     Text(
-                        "Choose two or more future road-connected nodes."
+                        "Choose two or more future road-connected stops."
                     )
                     .font(
                         .caption
@@ -326,7 +329,7 @@ private extension FutureRouteBuilderView {
                 } else if store.futureRouteDraft.stopCount == 1 {
 
                     Text(
-                        "Choose one more stop to plan the route."
+                        "Choose one more stop to plan the path."
                     )
                     .font(
                         .caption
@@ -419,8 +422,8 @@ private extension FutureRouteBuilderView {
 
 
         let succeeded =
-            store
-                .moveFutureRouteDraftStops(
+            socketManager
+                .reorderFutureRouteStops(
                     fromIndices:
                         sourceIndices,
                     toOffset:
@@ -431,7 +434,7 @@ private extension FutureRouteBuilderView {
         if !succeeded {
 
             print(
-                "❌ Unable to reorder route draft stops."
+                "❌ Unable to reorder path draft stops."
             )
         }
     }
@@ -481,8 +484,8 @@ private extension FutureRouteBuilderView {
                 nodeIDs[index]
 
 
-            store
-                .removeStopFromFutureRouteDraft(
+            socketManager
+                .removeFutureRouteStop(
                     nodeID:
                         nodeID
                 )
@@ -548,7 +551,7 @@ private extension FutureRouteBuilderView {
             } else {
 
                 Text(
-                    "Drag stops to change their route order."
+                    "Drag stops to change their path order."
                 )
             }
         }
@@ -849,8 +852,8 @@ private extension FutureRouteBuilderView {
         }
 
 
-        store
-            .moveFutureRouteDraftStop(
+        socketManager
+            .moveFutureRouteStop(
                 from:
                     index,
                 to:
@@ -880,8 +883,8 @@ private extension FutureRouteBuilderView {
         }
 
 
-        store
-            .moveFutureRouteDraftStop(
+        socketManager
+            .moveFutureRouteStop(
                 from:
                     index,
                 to:
@@ -928,7 +931,7 @@ private extension FutureRouteBuilderView {
 
 
                 Text(
-                    "This map node no longer exists."
+                    "This map stop no longer exists."
                 )
                 .font(
                     .caption
@@ -1231,14 +1234,14 @@ private extension FutureRouteBuilderView {
 
                 ContentUnavailableView(
                     searchText.isEmpty
-                    ? "No Available Route Stops"
+                    ? "No Available Path Stops"
                     : "No Matching Stops",
                     systemImage:
                         "magnifyingglass",
                     description:
                         Text(
                             searchText.isEmpty
-                            ? "Add future nodes on valid roads to make them available here."
+                            ? "Add future stops on valid roads to make them available here."
                             : "Try another search."
                         )
                 )
@@ -1265,7 +1268,7 @@ private extension FutureRouteBuilderView {
         } footer: {
 
             Text(
-                "Only enabled future nodes that are actually connected to the road network can be added to a road route."
+                "Only enabled future stops that are actually connected to the road network can be added to a road path."
             )
         }
     }
@@ -1283,7 +1286,7 @@ private extension FutureRouteBuilderView {
         some View {
 
         Section(
-            "Route Status"
+            "Path Status"
         ) {
 
             let validation =
@@ -1440,7 +1443,7 @@ private extension FutureRouteBuilderView {
                     .plain
                 )
                 .accessibilityLabel(
-                    "Add \(node.content.title) to route"
+                    "Add \(node.content.title) to path"
                 )
             }
         }
@@ -1657,16 +1660,17 @@ private extension FutureRouteBuilderView {
     ) {
 
         let succeeded =
-            store
-                .addStopToFutureRouteDraft(
-                    nodeID
+            socketManager
+                .addFutureRouteStop(
+                    nodeID:
+                        nodeID
                 )
 
 
         if !succeeded {
 
             print(
-                "Unable to add node to future route draft:",
+                "Unable to add stop to future path draft:",
                 nodeID
             )
         }
@@ -1678,8 +1682,8 @@ private extension FutureRouteBuilderView {
             GameNodeID
     ) {
 
-        store
-            .removeStopFromFutureRouteDraft(
+        socketManager
+            .removeFutureRouteStop(
                 nodeID:
                     nodeID
             )
@@ -1758,7 +1762,7 @@ private extension FutureRouteBuilderView {
         }
 
 
-        return "Route draft needs attention."
+        return "Path draft needs attention."
     }
 }
 
@@ -1820,7 +1824,7 @@ private extension FutureRouteBuilderView {
 
     func cancelRouteBuilder() {
 
-        store.clearFutureRouteDraft()
+        socketManager.cancelFutureRouteDraft()
 
         dismiss()
     }
@@ -1831,7 +1835,7 @@ private extension FutureRouteBuilderView {
     private func planRoute() {
 
         let planningResult =
-            store
+            socketManager
                 .planFutureRouteDraft()
 
 
@@ -1847,7 +1851,7 @@ private extension FutureRouteBuilderView {
 
 
         let generated =
-            store
+            socketManager
                 .generateFutureRoutePreview(
                     maxAlternatives:
                         3
@@ -1889,7 +1893,7 @@ private extension FutureRouteBuilderView {
 
         case .none:
 
-            return "Route start unavailable"
+            return "Path start unavailable"
         }
     }
 }
@@ -1906,11 +1910,11 @@ private extension FutureRouteBuilderView {
                 .isEditingExistingRoute
         {
 
-            return "Edit Route"
+            return "Edit Path"
         }
 
 
-        return "Build Route"
+        return "Build Path"
     }
 }
 
@@ -1923,7 +1927,7 @@ private extension FutureRouteBuilderView {
             store.futureRouteDraftPlan
         else {
 
-            return "The route could not be planned."
+            return "The path could not be planned."
         }
 
 
@@ -1940,7 +1944,7 @@ private extension FutureRouteBuilderView {
         case .invalidDraft:
 
             return
-                "Fix the route-stop issues before planning."
+                "Fix the path-stop issues before planning."
 
 
         case .noValidRoadPath:
@@ -1958,7 +1962,7 @@ private extension FutureRouteBuilderView {
         case .none:
 
             return
-                "The route could not be planned."
+                "The path could not be planned."
         }
     }
 }

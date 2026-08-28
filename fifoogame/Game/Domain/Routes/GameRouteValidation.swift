@@ -172,7 +172,7 @@ private extension GameRouteValidator {
                     severity:
                         .error,
                     message:
-                        "A route cannot contain the same node more than once."
+                        "A path cannot contain the same stop more than once."
                 )
             )
 
@@ -216,7 +216,7 @@ private extension GameRouteValidator {
                         severity:
                             .error,
                         message:
-                            "A route stop references a node that no longer exists."
+                            "A path stop references a stop that no longer exists."
                     )
                 )
 
@@ -287,7 +287,7 @@ private extension GameRouteValidator {
                         severity:
                             .error,
                         message:
-                            "\(node.content.title) is not positioned on a routable road."
+                            "\(node.content.title) is not positioned on a road that can participate in the path."
                     )
                 )
 
@@ -373,7 +373,7 @@ private extension GameRouteValidator {
                             severity:
                                 .error,
                             message:
-                                "Route stops cannot move backward in time."
+                                "Path stops cannot move backward in time."
                         )
                     )
 
@@ -409,7 +409,7 @@ private extension GameRouteValidator {
                     severity:
                         .error,
                     message:
-                        "The route leg count does not match its ordered stops."
+                        "The path leg count does not match its ordered stops."
                 )
             )
 
@@ -453,7 +453,7 @@ private extension GameRouteValidator {
                         severity:
                             .error,
                         message:
-                            "A route leg does not match the ordered route stops."
+                            "A path leg does not match the ordered path stops."
                     )
                 )
 

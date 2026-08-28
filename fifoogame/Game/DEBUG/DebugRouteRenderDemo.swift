@@ -2,7 +2,7 @@
 //  DebugRouteRenderDemo.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/23/26.
+//  Created by Daudi Sagala on 8/26/26.
 //
 
 
@@ -116,7 +116,7 @@ extension GameStore {
     /// return zero alternatives when it cannot find sufficiently distinct,
     /// valid routes. That makes it a poor dependency for a renderer test.
     ///
-    /// These two paths are only used by `routeRenderState` in DEBUG builds;
+    /// These render-only paths are used by `routeRenderState` in DEBUG builds;
     /// they do not replace or mutate the authoritative live route models.
     @discardableResult
     func installRouteRenderDemo(
@@ -161,7 +161,7 @@ extension GameStore {
             else {
 
                 print(
-                    "❌ Could not install route-render demo nodes."
+                    "❌ Could not install path-render demo stops."
                 )
 
                 return false
@@ -190,7 +190,7 @@ extension GameStore {
         else {
 
             print(
-                "❌ Route-render demo failed to create a chosen route."
+                "❌ Path-render demo failed to create a chosen path."
             )
 
             return false
@@ -214,7 +214,7 @@ extension GameStore {
         guard progression.succeeded else {
 
             print(
-                "❌ Route-render demo could not advance to \(preset.title)."
+                "❌ Path-render demo could not advance to \(preset.title)."
             )
 
             return false
@@ -242,7 +242,7 @@ extension GameStore {
 
         print("")
         print("==========================================")
-        print("        ROUTE RENDER DEMO READY")
+        print("        PATH RENDER DEMO READY")
         print("==========================================")
         print("Preset: \(preset.title)")
         print("Clock: \(currentDayTime.displayClockString)")
@@ -302,13 +302,18 @@ private extension GameStore {
     ///     12:00 AM ------------------------------ 11:59 PM
     ///
     /// At noon, the first half is rendered as Completed and the second half
-    /// as Chosen. Two alternative futures also begin at noon and continue to
+    /// as Chosen. Multiple alternative futures branch/rejoin throughout the day and continue to
     /// 11:59 PM. Horizontal movement is intentionally narrow so the visual
     /// reads as a DAY route first, not a wide cross-map route.
     @discardableResult
     func installFullDayRouteRenderDemo() -> Bool {
 
-        // Keep the current-time line exactly at the Completed / Chosen split.
+        // This fixture is deliberately production-shaped rather than a
+        // renderer-only mock. It installs real route-state data plus real map
+        // nodes so node taps, route inspectors, route switching, overlap,
+        // end-of-day layout, and the current-user boundary marker can all be
+        // tested together.
+
         resetSimulationDay(
             to:
                 DayTime(
@@ -322,25 +327,42 @@ private extension GameStore {
         debugAlternativeRenderPaths =
             nil
 
+        debugRouteRenderStateOverride =
+            nil
 
-        // -------------------------------------------------
+        let baseGameNodes =
+            gameNodes.filter { node in
+                guard case let .activity(content) = node.content else {
+                    return true
+                }
+
+                return !content.activityID.hasPrefix(
+                    "debug-full-day-"
+                )
+            }
+
+
+        // =====================================================
+        // 1. Shared route geometry
+        // =====================================================
+
+        let boundary =
+            GridIntersectionID(
+                column: 5,
+                row: 8
+            )
+
+
         // COMPLETED: 12:00 AM → 12:00 PM
-        // -------------------------------------------------
-        //
-        // Uses only columns 3...5. With the current grid that is a maximum
-        // horizontal spread of 25 progress points while covering 12 hours.
-        // The last segment approaches the noon boundary from the LEFT so the
-        // Completed → Chosen transition exercises a curved state-color turn.
-
         let completedPoints: [GridIntersectionID] = [
-            .init(column: 4, row: 0),   // 12:00 AM
-            .init(column: 4, row: 2),   //  3:00 AM
+            .init(column: 4, row: 0),
+            .init(column: 4, row: 2),
             .init(column: 3, row: 2),
-            .init(column: 3, row: 4),   //  6:00 AM
+            .init(column: 3, row: 4),
             .init(column: 4, row: 4),
-            .init(column: 4, row: 6),   //  9:00 AM
-            .init(column: 4, row: 8),   // 12:00 PM
-            .init(column: 5, row: 8)    // noon state boundary
+            .init(column: 4, row: 6),
+            .init(column: 4, row: 8),
+            boundary
         ]
 
         let completedSegments =
@@ -350,137 +372,924 @@ private extension GameStore {
             )
 
 
-        // -------------------------------------------------
-        // CHOSEN: 12:00 PM → 11:59 PM
-        // -------------------------------------------------
+        // =====================================================
+        // 2. Completed-route nodes
+        // =====================================================
 
-        let chosenPoints: [GridIntersectionID] = [
-            .init(column: 5, row: 8),   // 12:00 PM
-            .init(column: 5, row: 10),  //  3:00 PM
-            .init(column: 4, row: 10),
-            .init(column: 4, row: 12),  //  6:00 PM
-            .init(column: 5, row: 12),
-            .init(column: 5, row: 14),  //  9:00 PM
-            .init(column: 4, row: 14),
-            .init(column: 4, row: 15)   // 10:30 PM
+        let completedSpecs: [(GridIntersectionID, String)] = [
+            (.init(column: 4, row: 1), "Early Start"),       // 1:30 AM
+            (.init(column: 3, row: 3), "Morning Reset"),     // 4:30 AM
+            (.init(column: 4, row: 5), "Breakfast Walk"),    // 7:30 AM
+            (.init(column: 4, row: 7), "Midday Prep")        // 10:30 AM
         ]
 
-        let chosenSegments =
-            debugSegmentsEndingAtElevenFiftyNine(
-                through:
-                    chosenPoints
+        let completedNodes =
+            completedSpecs.map {
+                makeFullDayFixtureNode(
+                    intersection:
+                        $0.0,
+                    title:
+                        $0.1,
+                    routeRole:
+                        "completed",
+                    status:
+                        "Completed"
+                )
+            }
+
+        // Nodes are published together after the entire fixture is built.
+        // Keeping fixture construction side-effect free avoids repeatedly
+        // selecting newly-added nodes while the routes are being assembled.
+
+
+        // =====================================================
+        // 3. Chosen-route nodes
+        // =====================================================
+
+        let chosenOneIntersection =
+            GridIntersectionID(column: 5, row: 9)     // 1:30 PM
+
+        let chosenTwoIntersection =
+            GridIntersectionID(column: 4, row: 11)    // 4:30 PM
+
+        let chosenThreeIntersection =
+            GridIntersectionID(column: 5, row: 13)    // 7:30 PM
+
+        let chosenFourIntersection =
+            GridIntersectionID(column: 4, row: 15)    // 10:30 PM
+
+        let endOfDayCoordinate =
+            debugEndOfDayCoordinate(
+                column: 4
             )
 
 
-        // -------------------------------------------------
-        // ALTERNATIVE 1: noon → 11:59 PM
-        // -------------------------------------------------
-        // Slightly to the RIGHT of the chosen route, but still deliberately
-        // narrow compared with the 2,000-point vertical day axis.
+        let chosenNodes = [
+            makeFullDayFixtureNode(
+                intersection:
+                    chosenOneIntersection,
+                title:
+                    "Lunch Follow-up",
+                routeRole:
+                    "chosen"
+            ),
 
-        let alternativeOnePoints: [GridIntersectionID] = [
-            .init(column: 5, row: 8),
-            .init(column: 6, row: 8),
-            .init(column: 6, row: 10),
-            .init(column: 5, row: 10),
-            .init(column: 5, row: 12),
-            .init(column: 6, row: 12),
-            .init(column: 6, row: 14),
-            .init(column: 4, row: 14),
-            .init(column: 4, row: 15)
+            makeFullDayFixtureNode(
+                intersection:
+                    chosenTwoIntersection,
+                title:
+                    "Afternoon Focus",
+                routeRole:
+                    "chosen"
+            ),
+
+            makeFullDayFixtureNode(
+                intersection:
+                    chosenThreeIntersection,
+                title:
+                    "Evening Workout",
+                routeRole:
+                    "chosen"
+            ),
+
+            makeFullDayFixtureNode(
+                intersection:
+                    chosenFourIntersection,
+                title:
+                    "Wind Down",
+                routeRole:
+                    "chosen"
+            ),
+
+            makeFullDayFixtureNode(
+                coordinate:
+                    endOfDayCoordinate,
+                title:
+                    "End of Day",
+                routeRole:
+                    "chosen"
+            )
         ]
 
-        let alternativeOneSegments =
-            debugSegmentsEndingAtElevenFiftyNine(
-                through:
-                    alternativeOnePoints
+        // =====================================================
+        // 4. Five alternative routes + their own nodes
+        // =====================================================
+        //
+        // The alternatives intentionally branch and rejoin at different
+        // points of the chosen route. This gives a much better interaction
+        // fixture than five routes that all diverge only at noon.
+
+        let altOneIntersection =
+            GridIntersectionID(column: 6, row: 9)     // 1:30 PM
+
+        let altTwoIntersection =
+            GridIntersectionID(column: 3, row: 11)    // 4:30 PM
+
+        let altThreeIntersection =
+            GridIntersectionID(column: 6, row: 13)    // 7:30 PM
+
+        let altFourIntersection =
+            GridIntersectionID(column: 3, row: 15)    // 10:30 PM
+
+        let altFiveOneIntersection =
+            GridIntersectionID(column: 7, row: 9)     // 1:30 PM
+
+        let altFiveTwoIntersection =
+            GridIntersectionID(column: 7, row: 13)    // 7:30 PM
+
+
+        let alternativeNodes = [
+            makeFullDayFixtureNode(
+                intersection:
+                    altOneIntersection,
+                title:
+                    "Coffee Detour",
+                routeRole:
+                    "alternative-1"
+            ),
+
+            makeFullDayFixtureNode(
+                intersection:
+                    altTwoIntersection,
+                title:
+                    "Errand Stop",
+                routeRole:
+                    "alternative-2"
+            ),
+
+            makeFullDayFixtureNode(
+                intersection:
+                    altThreeIntersection,
+                title:
+                    "Dinner Option",
+                routeRole:
+                    "alternative-3"
+            ),
+
+            makeFullDayFixtureNode(
+                intersection:
+                    altFourIntersection,
+                title:
+                    "Late Stop",
+                routeRole:
+                    "alternative-4"
+            ),
+
+            makeFullDayFixtureNode(
+                intersection:
+                    altFiveOneIntersection,
+                title:
+                    "Long Detour",
+                routeRole:
+                    "alternative-5"
+            ),
+
+            makeFullDayFixtureNode(
+                intersection:
+                    altFiveTwoIntersection,
+                title:
+                    "Evening Rejoin",
+                routeRole:
+                    "alternative-5"
             )
-
-
-        // -------------------------------------------------
-        // ALTERNATIVE 2: noon → 11:59 PM
-        // -------------------------------------------------
-        // Diverges to the LEFT, making both alternatives easy to distinguish
-        // from the chosen route without creating a horizontally dominant map.
-
-        let alternativeTwoPoints: [GridIntersectionID] = [
-            .init(column: 5, row: 8),
-            .init(column: 4, row: 8),
-            .init(column: 4, row: 10),
-            .init(column: 3, row: 10),
-            .init(column: 3, row: 12),
-            .init(column: 4, row: 12),
-            .init(column: 4, row: 14),
-            .init(column: 4, row: 15)
         ]
 
-        let alternativeTwoSegments =
-            debugSegmentsEndingAtElevenFiftyNine(
-                through:
-                    alternativeTwoPoints
-            )
+        // =====================================================
+        // 5. Build a fully planned CHOSEN route
+        // =====================================================
 
+        let chosenRouteID =
+            RouteID()
 
-        let boundaryIntersection =
-            GridIntersectionID(
-                column: 5,
-                row: 8
-            )
-
-        let state =
-            RouteRenderState(
-                completedSegments:
-                    completedSegments,
-                chosenFuture:
-                    RouteRenderPath(
-                        routeID:
-                            RouteID(),
-                        segments:
-                            chosenSegments
-                    ),
-                alternatives: [
-                    RouteRenderPath(
-                        routeID:
-                            RouteID(),
-                        segments:
-                            alternativeOneSegments
-                    ),
-                    RouteRenderPath(
-                        routeID:
-                            RouteID(),
-                        segments:
-                            alternativeTwoSegments
-                    )
+        let chosenRoute =
+            GameRoute(
+                id:
+                    chosenRouteID,
+                stopNodeIDs: [
+                    chosenNodes[0].id,
+                    chosenNodes[1].id,
+                    chosenNodes[2].id,
+                    chosenNodes[3].id,
+                    chosenNodes[4].id
                 ],
-                currentBoundary:
-                    .vertex(
-                        GridRoadTopology.vertexID(
-                            for:
-                                boundaryIntersection
-                        )
+                entryLeg:
+                    debugEntryLeg(
+                        startIntersection:
+                            boundary,
+                        toNodeID:
+                            chosenNodes[0].id,
+                        through: [
+                            boundary,
+                            chosenOneIntersection
+                        ]
+                    ),
+                legs: [
+                    debugLeg(
+                        from:
+                            chosenNodes[0].id,
+                        to:
+                            chosenNodes[1].id,
+                        through: [
+                            chosenOneIntersection,
+                            .init(column: 5, row: 10),
+                            .init(column: 4, row: 10),
+                            chosenTwoIntersection
+                        ]
+                    ),
+
+                    debugLeg(
+                        from:
+                            chosenNodes[1].id,
+                        to:
+                            chosenNodes[2].id,
+                        through: [
+                            chosenTwoIntersection,
+                            .init(column: 4, row: 12),
+                            .init(column: 5, row: 12),
+                            chosenThreeIntersection
+                        ]
+                    ),
+
+                    debugLeg(
+                        from:
+                            chosenNodes[2].id,
+                        to:
+                            chosenNodes[3].id,
+                        through: [
+                            chosenThreeIntersection,
+                            .init(column: 5, row: 14),
+                            .init(column: 4, row: 14),
+                            chosenFourIntersection
+                        ]
+                    ),
+
+                    debugLegEndingAtElevenFiftyNine(
+                        from:
+                            chosenNodes[3].id,
+                        to:
+                            chosenNodes[4].id,
+                        through: [
+                            chosenFourIntersection
+                        ]
+                    )
+                ]
+            )
+
+
+        // =====================================================
+        // 6. Build five fully planned ALTERNATIVE routes
+        // =====================================================
+
+        let altOne =
+            GameRoute(
+                id:
+                    RouteID(),
+                stopNodeIDs: [
+                    alternativeNodes[0].id,
+                    chosenNodes[4].id
+                ],
+                entryLeg:
+                    debugEntryLeg(
+                        startIntersection:
+                            boundary,
+                        toNodeID:
+                            alternativeNodes[0].id,
+                        through: [
+                            boundary,
+                            .init(column: 6, row: 8),
+                            altOneIntersection
+                        ]
+                    ),
+                legs: [
+                    debugLegEndingAtElevenFiftyNine(
+                        from:
+                            alternativeNodes[0].id,
+                        to:
+                            chosenNodes[4].id,
+                        through: [
+                            altOneIntersection,
+                            .init(column: 6, row: 10),
+                            .init(column: 5, row: 10),
+                            .init(column: 4, row: 10),
+                            .init(column: 4, row: 12),
+                            .init(column: 5, row: 12),
+                            .init(column: 5, row: 14),
+                            .init(column: 4, row: 14),
+                            chosenFourIntersection
+                        ]
+                    )
+                ]
+            )
+
+
+        let altTwo =
+            GameRoute(
+                id:
+                    RouteID(),
+                stopNodeIDs: [
+                    alternativeNodes[1].id,
+                    chosenNodes[4].id
+                ],
+                entryLeg:
+                    debugEntryLeg(
+                        startIntersection:
+                            boundary,
+                        toNodeID:
+                            alternativeNodes[1].id,
+                        through: [
+                            boundary,
+                            .init(column: 5, row: 10),
+                            .init(column: 3, row: 10),
+                            altTwoIntersection
+                        ]
+                    ),
+                legs: [
+                    debugLegEndingAtElevenFiftyNine(
+                        from:
+                            alternativeNodes[1].id,
+                        to:
+                            chosenNodes[4].id,
+                        through: [
+                            altTwoIntersection,
+                            .init(column: 3, row: 12),
+                            .init(column: 4, row: 12),
+                            .init(column: 5, row: 12),
+                            .init(column: 5, row: 14),
+                            .init(column: 4, row: 14),
+                            chosenFourIntersection
+                        ]
+                    )
+                ]
+            )
+
+
+        let altThree =
+            GameRoute(
+                id:
+                    RouteID(),
+                stopNodeIDs: [
+                    alternativeNodes[2].id,
+                    chosenNodes[4].id
+                ],
+                entryLeg:
+                    debugEntryLeg(
+                        startIntersection:
+                            boundary,
+                        toNodeID:
+                            alternativeNodes[2].id,
+                        through: [
+                            boundary,
+                            .init(column: 5, row: 10),
+                            .init(column: 4, row: 10),
+                            .init(column: 4, row: 12),
+                            .init(column: 5, row: 12),
+                            .init(column: 6, row: 12),
+                            altThreeIntersection
+                        ]
+                    ),
+                legs: [
+                    debugLegEndingAtElevenFiftyNine(
+                        from:
+                            alternativeNodes[2].id,
+                        to:
+                            chosenNodes[4].id,
+                        through: [
+                            altThreeIntersection,
+                            .init(column: 6, row: 14),
+                            .init(column: 5, row: 14),
+                            .init(column: 4, row: 14),
+                            chosenFourIntersection
+                        ]
+                    )
+                ]
+            )
+
+
+        let altFour =
+            GameRoute(
+                id:
+                    RouteID(),
+                stopNodeIDs: [
+                    alternativeNodes[3].id,
+                    chosenNodes[4].id
+                ],
+                entryLeg:
+                    debugEntryLeg(
+                        startIntersection:
+                            boundary,
+                        toNodeID:
+                            alternativeNodes[3].id,
+                        through: [
+                            boundary,
+                            .init(column: 5, row: 10),
+                            .init(column: 4, row: 10),
+                            .init(column: 4, row: 12),
+                            .init(column: 5, row: 12),
+                            .init(column: 5, row: 14),
+                            .init(column: 3, row: 14),
+                            altFourIntersection
+                        ]
+                    ),
+                legs: [
+                    debugLegEndingAtElevenFiftyNine(
+                        from:
+                            alternativeNodes[3].id,
+                        to:
+                            chosenNodes[4].id,
+                        through: [
+                            altFourIntersection,
+                            chosenFourIntersection
+                        ]
+                    )
+                ]
+            )
+
+
+        let altFive =
+            GameRoute(
+                id:
+                    RouteID(),
+                stopNodeIDs: [
+                    alternativeNodes[4].id,
+                    alternativeNodes[5].id,
+                    chosenNodes[4].id
+                ],
+                entryLeg:
+                    debugEntryLeg(
+                        startIntersection:
+                            boundary,
+                        toNodeID:
+                            alternativeNodes[4].id,
+                        through: [
+                            boundary,
+                            .init(column: 7, row: 8),
+                            altFiveOneIntersection
+                        ]
+                    ),
+                legs: [
+                    debugLeg(
+                        from:
+                            alternativeNodes[4].id,
+                        to:
+                            alternativeNodes[5].id,
+                        through: [
+                            altFiveOneIntersection,
+                            .init(column: 7, row: 10),
+                            .init(column: 5, row: 10),
+                            .init(column: 5, row: 12),
+                            .init(column: 7, row: 12),
+                            altFiveTwoIntersection
+                        ]
+                    ),
+
+                    debugLegEndingAtElevenFiftyNine(
+                        from:
+                            alternativeNodes[5].id,
+                        to:
+                            chosenNodes[4].id,
+                        through: [
+                            altFiveTwoIntersection,
+                            .init(column: 7, row: 14),
+                            .init(column: 4, row: 14),
+                            chosenFourIntersection
+                        ]
+                    )
+                ]
+            )
+
+
+        // =====================================================
+        // 7. Publish the authoritative DEBUG route state
+        // =====================================================
+
+        let fixtureNodes =
+            completedNodes
+            + chosenNodes
+            + alternativeNodes
+
+        replaceGameNodesFromServer(
+            baseGameNodes
+            + fixtureNodes
+        )
+
+        let fullDayRouteState =
+            DayRouteState(
+                completedRoute:
+                    CompletedRoute(
+                        segments:
+                            completedSegments,
+                        reachedNodeIDs:
+                            completedNodes.map(\.id),
+                        throughTime:
+                            DayTime(
+                                secondsFromMidnight:
+                                    12 * 3_600
+                            ),
+                        boundary:
+                            .vertex(
+                                GridRoadTopology.vertexID(
+                                    for:
+                                        boundary
+                                )
+                            )
+                    ),
+                chosenFutureRoute:
+                    chosenRoute,
+                alternativeRoutes: [
+                    altOne,
+                    altTwo,
+                    altThree,
+                    altFour,
+                    altFive
+                ],
+                chosenFutureRouteActivatedAt:
+                    DayTime(
+                        secondsFromMidnight:
+                            12 * 3_600
                     )
             )
 
-        debugRouteRenderStateOverride =
-            state
+        replaceRouteStateFromServer(
+            fullDayRouteState
+        )
 
 
         print("")
         print("==========================================")
-        print("       FULL-DAY ROUTE DEMO READY")
+        print("     FULL-DAY PATH + STOP TEST READY")
         print("==========================================")
-        print("Route span: 12:00 AM → 11:59 PM")
+        print("Path span: 12:00 AM → 11:59 PM")
         print("State split: 12:00 PM")
-        print("Completed segments: \(completedSegments.count)")
-        print("Chosen segments: \(chosenSegments.count)")
-        print("Alternatives visible: \(state.alternatives.count)")
-        print("Grid rows covered: 0 → 15 + 89/90 of final edge")
-        print("Primary columns used: 3...5")
-        print("Alternative columns used: 3...6")
+        print("Completed stops: \(completedNodes.count)")
+        print("Chosen stops: \(chosenNodes.count)")
+        print("Alternative paths: \(fullDayRouteState.alternativeRoutes.count)")
+        print("Alternative-only stops: \(alternativeNodes.count)")
+        print("Total fixture stops: \(completedNodes.count + chosenNodes.count + alternativeNodes.count)")
+        print("Latest stop time: 11:59 PM")
         print("==========================================")
         print("")
 
         return true
+    }
+
+
+    // MARK: - Full-Day Fixture Nodes
+
+    func makeFullDayFixtureNode(
+        intersection: GridIntersectionID,
+        title: String,
+        routeRole: String,
+        status: String = "Not Started"
+    ) -> GameMapNode {
+
+        let coordinate =
+            GridRoadTopology.coordinate(
+                for:
+                    intersection
+            )
+
+        return GameMapNode(
+            id:
+                GameNodeID(),
+            placement:
+                .roadVertex(
+                    GridRoadTopology.vertexID(
+                        for:
+                            intersection
+                    )
+                ),
+            time:
+                coordinate.time,
+            content:
+                .activity(
+                    ActivityNodeContent(
+                        activityID:
+                            "debug-full-day-\(routeRole)-\(UUID().uuidString)",
+                        title:
+                            title,
+                        startTime:
+                            coordinate.time.displayClockString,
+                        description:
+                            "Full-day path testing fixture (\(routeRole)).",
+                        activityType:
+                            ActivityNodeContent.ActivityType.task.rawValue,
+                        status:
+                            status,
+                        image:
+                            nil
+                    )
+                ),
+            isEnabled:
+                true
+        )
+    }
+
+
+    func makeFullDayFixtureNode(
+        coordinate: MapCoordinate,
+        title: String,
+        routeRole: String,
+        status: String = "Not Started"
+    ) -> GameMapNode {
+
+        GameMapNode(
+            id:
+                GameNodeID(),
+            placement:
+                .coordinate(
+                    coordinate
+                ),
+            time:
+                coordinate.time,
+            content:
+                .activity(
+                    ActivityNodeContent(
+                        activityID:
+                            "debug-full-day-\(routeRole)-\(UUID().uuidString)",
+                        title:
+                            title,
+                        startTime:
+                            coordinate.time.displayClockString,
+                        description:
+                            "Full-day path testing fixture (\(routeRole)).",
+                        activityType:
+                            ActivityNodeContent.ActivityType.task.rawValue,
+                        status:
+                            status,
+                        image:
+                            nil
+                    )
+                ),
+            isEnabled:
+                true
+        )
+    }
+
+
+
+
+
+    // MARK: - Full-Day Fixture Route Builders
+
+    func debugEntryLeg(
+        startIntersection: GridIntersectionID,
+        toNodeID: GameNodeID,
+        through points: [GridIntersectionID]
+    ) -> GameRouteEntryLeg {
+
+        let startLocation:
+            GameNodeRouteAnchor.RoadLocation =
+                .vertex(
+                    GridRoadTopology.vertexID(
+                        for:
+                            startIntersection
+                    )
+                )
+
+        let startAnchor =
+            RoadRouteAnchor(
+                coordinate:
+                    GridRoadTopology.coordinate(
+                        for:
+                            startIntersection
+                    ),
+                roadLocation:
+                    startLocation
+            )
+
+        return GameRouteEntryLeg(
+            startAnchor:
+                startAnchor,
+            toNodeID:
+                toNodeID,
+            path:
+                debugRoadRoutePath(
+                    through:
+                        points
+                )
+        )
+    }
+
+
+    func debugLeg(
+        from fromNodeID: GameNodeID,
+        to toNodeID: GameNodeID,
+        through points: [GridIntersectionID]
+    ) -> GameRouteLeg {
+
+        GameRouteLeg(
+            fromNodeID:
+                fromNodeID,
+            toNodeID:
+                toNodeID,
+            path:
+                debugRoadRoutePath(
+                    through:
+                        points
+                )
+        )
+    }
+
+
+    func debugLegEndingAtElevenFiftyNine(
+        from fromNodeID: GameNodeID,
+        to toNodeID: GameNodeID,
+        through points: [GridIntersectionID]
+    ) -> GameRouteLeg {
+
+        GameRouteLeg(
+            fromNodeID:
+                fromNodeID,
+            toNodeID:
+                toNodeID,
+            path:
+                debugRoadRoutePathEndingAtElevenFiftyNine(
+                    through:
+                        points
+                )
+        )
+    }
+
+
+    func debugRoadRoutePath(
+        through points: [GridIntersectionID]
+    ) -> RoadRoutePath? {
+
+        guard
+            let first = points.first,
+            let last = points.last
+        else {
+            return nil
+        }
+
+        let segments =
+            debugSegments(
+                through:
+                    points
+            )
+
+        return RoadRoutePath(
+            startLocation:
+                .vertex(
+                    GridRoadTopology.vertexID(
+                        for:
+                            first
+                    )
+                ),
+            endLocation:
+                .vertex(
+                    GridRoadTopology.vertexID(
+                        for:
+                            last
+                    )
+                ),
+            vertexIDs:
+                points.map {
+                    GridRoadTopology.vertexID(
+                        for:
+                            $0
+                    )
+                },
+            segments:
+                segments,
+            totalCost:
+                debugRouteCost(
+                    segments
+                )
+        )
+    }
+
+
+    func debugRoadRoutePathEndingAtElevenFiftyNine(
+        through points: [GridIntersectionID]
+    ) -> RoadRoutePath? {
+
+        guard
+            let first = points.first,
+            let last = points.last,
+            last.row == GridRoadTopology.maximumIntersectionRow - 1
+        else {
+            return nil
+        }
+
+        let segments =
+            debugSegmentsEndingAtElevenFiftyNine(
+                through:
+                    points
+            )
+
+        return RoadRoutePath(
+            startLocation:
+                .vertex(
+                    GridRoadTopology.vertexID(
+                        for:
+                            first
+                    )
+                ),
+            endLocation:
+                .edge(
+                    edgeID:
+                        GridRoadTopology.verticalEdgeID(
+                            column:
+                                last.column,
+                            topRow:
+                                last.row
+                        ),
+                    fraction:
+                        debugEndOfDayEdgeFraction()
+                ),
+            vertexIDs:
+                points.map {
+                    GridRoadTopology.vertexID(
+                        for:
+                            $0
+                    )
+                },
+            segments:
+                segments,
+            totalCost:
+                debugRouteCost(
+                    segments
+                )
+        )
+    }
+
+
+    func debugEndOfDayCoordinate(
+        column: Int
+    ) -> MapCoordinate {
+
+        let progress =
+            GridRoadTopology.coordinate(
+                for:
+                    GridIntersectionID(
+                        column:
+                            column,
+                        row:
+                            GridRoadTopology.maximumIntersectionRow - 1
+                    )
+            )
+            .progress
+
+        return MapCoordinate(
+            time:
+                DayTime(
+                    secondsFromMidnight:
+                        (23 * 3_600)
+                        +
+                        (59 * 60)
+                ),
+            progress:
+                progress
+        )
+    }
+
+
+    func debugEndOfDayEdgeFraction() -> Double {
+
+        let finalTopRow =
+            GridRoadTopology.maximumIntersectionRow - 1
+
+        let targetSeconds =
+            Double(
+                (23 * 3_600)
+                +
+                (59 * 60)
+            )
+
+        let edgeStartSeconds =
+            Double(finalTopRow)
+            *
+            GridRoadTopology.hoursPerPitch
+            *
+            3_600.0
+
+        let edgeDurationSeconds =
+            GridRoadTopology.hoursPerPitch
+            *
+            3_600.0
+
+        return min(
+            max(
+                (targetSeconds - edgeStartSeconds)
+                /
+                edgeDurationSeconds,
+                0
+            ),
+            1
+        )
+    }
+
+
+    func debugRouteCost(
+        _ segments: [RoadRouteSegment]
+    ) -> Double {
+
+        segments.reduce(0) {
+            $0
+            +
+            $1.traversedFraction
+        }
     }
 
 
@@ -506,7 +1315,7 @@ private extension GameStore {
         else {
 
             assertionFailure(
-                "Full-day debug route must reach the final 10:30 PM row before its 11:59 PM partial edge."
+                "Full-day debug path must reach the final 10:30 PM row before its 11:59 PM partial edge."
             )
 
             return debugSegments(
@@ -806,7 +1615,7 @@ private extension GameStore {
 
 
         assertionFailure(
-            "Debug route fixture requires horizontal or downward segments only."
+            "Debug path fixture requires horizontal or downward segments only."
         )
 
         return []

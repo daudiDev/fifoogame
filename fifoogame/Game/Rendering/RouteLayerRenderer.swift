@@ -2,12 +2,14 @@
 //  RouteLayerRenderer.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/22/26.
+//  Created by Daudi Sagala on 8/25/26.
 //
+
 
 
 import SpriteKit
 import CoreGraphics
+import UIKit
 
 
 @MainActor
@@ -95,7 +97,8 @@ final class RouteLayerRenderer {
     func render(
         _ state: RouteRenderState,
         graph: RoadGraph,
-        selectedRouteID: RouteID? = nil
+        selectedRouteID: RouteID? = nil,
+        currentUserAvatarAssetName: String? = nil
     ) {
 
         clearLiveRoutes()
@@ -152,7 +155,9 @@ final class RouteLayerRenderer {
 
             renderBoundary(
                 boundary,
-                graph: graph
+                graph: graph,
+                currentUserAvatarAssetName:
+                    currentUserAvatarAssetName
             )
         }
     }
@@ -473,7 +478,8 @@ private extension RouteLayerRenderer {
 
     func renderBoundary(
         _ location: GameNodeRouteAnchor.RoadLocation,
-        graph: RoadGraph
+        graph: RoadGraph,
+        currentUserAvatarAssetName: String?
     ) {
 
         guard let point =
@@ -485,18 +491,126 @@ private extension RouteLayerRenderer {
             return
         }
 
-        let marker =
+        let root =
+            SKNode()
+
+        root.name =
+            "route.currentUser"
+
+        root.position =
+            point.cgPoint
+
+        // A small shadow/ring keeps the user's current route position legible
+        // over either Completed or Chosen route colors.
+        let shadow =
             SKShapeNode(
-                circleOfRadius: RouteVisualTheme.boundaryRadius
+                circleOfRadius: 18
             )
 
-        marker.position = point.cgPoint
-        marker.fillColor = RouteVisualTheme.boundaryFillColor
-        marker.strokeColor = RouteVisualTheme.boundaryStrokeColor
-        marker.lineWidth = 3
-        marker.name = "route.currentBoundary"
+        shadow.fillColor =
+            UIColor.black.withAlphaComponent(0.18)
 
-        boundaryLayer.addChild(marker)
+        shadow.strokeColor =
+            .clear
+
+        shadow.position =
+            CGPoint(
+                x: 0,
+                y: -2
+            )
+
+        shadow.zPosition =
+            0
+
+        root.addChild(
+            shadow
+        )
+
+        let ring =
+            SKShapeNode(
+                circleOfRadius: 17
+            )
+
+        ring.fillColor =
+            .white
+
+        ring.strokeColor =
+            UIColor.black.withAlphaComponent(0.12)
+
+        ring.lineWidth =
+            1
+
+        ring.zPosition =
+            1
+
+        root.addChild(
+            ring
+        )
+
+        let avatarCrop =
+            SKCropNode()
+
+        let avatarMask =
+            SKShapeNode(
+                circleOfRadius: 14
+            )
+
+        avatarMask.fillColor =
+            .white
+
+        avatarMask.strokeColor =
+            .clear
+
+        avatarCrop.maskNode =
+            avatarMask
+
+        avatarCrop.zPosition =
+            2
+
+        let requestedName =
+            currentUserAvatarAssetName
+                ?? "placeholder"
+
+        let avatarImage =
+            UIImage(
+                named: requestedName
+            )
+            ?? UIImage(
+                named: "placeholder"
+            )
+            ?? UIImage(
+                systemName:
+                    "person.crop.circle.fill"
+            )
+
+        if let avatarImage {
+
+            let avatarSprite =
+                SKSpriteNode(
+                    texture:
+                        SKTexture(
+                            image: avatarImage
+                        )
+                )
+
+            avatarSprite.size =
+                CGSize(
+                    width: 50,
+                    height: 50
+                )
+
+            avatarCrop.addChild(
+                avatarSprite
+            )
+        }
+
+        root.addChild(
+            avatarCrop
+        )
+
+        boundaryLayer.addChild(
+            root
+        )
     }
 
 

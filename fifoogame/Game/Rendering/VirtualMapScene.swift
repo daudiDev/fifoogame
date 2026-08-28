@@ -2,8 +2,10 @@
 //  VirtualMapScene.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/24/26.
+//  Created by Daudi Sagala on 8/25/26.
 //
+
+
 
 import SpriteKit
 
@@ -22,6 +24,23 @@ final class VirtualMapScene: SKScene {
         SceneInteractionDelegate?
 
 
+    /// Semantic taps can be suppressed independently from the camera
+    /// gestures. Alternate-route preview mode uses this so the user can keep
+    /// panning and pinching the map while every card/node interaction is
+    /// temporarily disabled.
+    private var semanticTapsEnabled =
+        true
+
+
+    func setSemanticTapsEnabled(
+        _ isEnabled: Bool
+    ) {
+
+        semanticTapsEnabled =
+            isEnabled
+    }
+
+
     // =====================================================
     // MARK: - Domain Input
     // =====================================================
@@ -32,6 +51,15 @@ final class VirtualMapScene: SKScene {
 
     private var gameNodes:
         [GameMapNode]
+
+    private var revealedTileIDs:
+        Set<GridCellID>
+
+    /// Non-nil only while one alternate route is temporarily isolated after
+    /// the user's first tap on an alternate GameNode card. The tile resolver
+    /// uses this to restore join lines and expose that route's transit cells.
+    private var focusedAlternativeRouteID:
+        RouteID? = nil
 
 
     // =====================================================
@@ -124,6 +152,9 @@ final class VirtualMapScene: SKScene {
     private var currentTime:
         DayTime
 
+    private var currentProgressPercent:
+        Double
+
 
     /*
      Keep the current semantic selection in the scene.
@@ -156,14 +187,21 @@ final class VirtualMapScene: SKScene {
     init(
         initialTime:
             DayTime,
+        initialProgressPercent:
+            Double = 0,
         roadGraph:
             RoadGraph,
         gameNodes:
-            [GameMapNode]
+            [GameMapNode],
+        revealedTileIDs:
+            Set<GridCellID> = []
     ) {
 
         self.currentTime =
             initialTime
+
+        self.currentProgressPercent =
+            initialProgressPercent
 
 
         self.roadGraph =
@@ -172,6 +210,9 @@ final class VirtualMapScene: SKScene {
 
         self.gameNodes =
             gameNodes
+
+        self.revealedTileIDs =
+            revealedTileIDs
 
 
         super.init(
@@ -193,13 +234,19 @@ final class VirtualMapScene: SKScene {
         self.currentTime =
             .noon
 
+        self.currentProgressPercent =
+            0
+
 
         self.roadGraph =
             GridRoadGraph.make()
 
 
         self.gameNodes =
-            SampleGameNodes.make()
+            []
+
+        self.revealedTileIDs =
+            []
 
 
         super.init(
@@ -217,21 +264,26 @@ final class VirtualMapScene: SKScene {
 
     func renderRoutes(
         _ state:
-            RouteRenderState
+            RouteRenderState,
+        focusedAlternativeRouteID:
+            RouteID? = nil,
+        currentUserAvatarAssetName:
+            String? = nil
     ) {
+
+        // The semantic road/pathfinding system remains authoritative, but
+        // route geometry is now visualized as tile boundaries rather than
+        // painted road lines. The avatar argument remains for source/API
+        // compatibility while the migration is staged.
+        _ = currentUserAvatarAssetName
 
         currentRouteRenderState =
             state
 
+        self.focusedAlternativeRouteID =
+            focusedAlternativeRouteID
 
-        routeRenderer.render(
-            state,
-            graph:
-                roadGraph,
-            selectedRouteID:
-                currentSelection
-                    .selectedRouteID
-        )
+        refreshTilePresentation()
     }
     
     // =====================================================
@@ -246,13 +298,7 @@ final class VirtualMapScene: SKScene {
         currentRoutePreviewRenderState =
             state
 
-
-        routeRenderer
-            .renderPreview(
-                state,
-                graph:
-                    roadGraph
-            )
+        refreshTilePresentation()
     }
     
     func clearRoutePreview() {
@@ -260,9 +306,7 @@ final class VirtualMapScene: SKScene {
         currentRoutePreviewRenderState =
             .empty
 
-
-        routeRenderer
-            .clearPreview()
+        refreshTilePresentation()
     }
     
     private func updateTimeAxis() {
@@ -342,11 +386,11 @@ private extension VirtualMapScene {
             .aspectFit
 
 
-        // Step 3: the scene itself is the continuous road surface.
-        // Rounded land islands are rendered above it by MapGridRenderer.
+        // Tile redesign: roads are no longer a visible map layer. The scene
+        // is a quiet continuous backdrop behind deterministic square cards.
         backgroundColor =
             MapVisualTheme
-                .roadSurfaceColor
+                .tileMapBackgroundColor
 
 
         /*
@@ -674,30 +718,12 @@ private extension VirtualMapScene {
         )
 
 
-        // The road surface is rendered by MapGridRenderer. The semantic
-        // roadLayer remains available for future road-specific overlays but
-        // no legacy RoadLayerRenderer is attached.
-        
-        routeRenderer.attach(
-              to:
-                  routeLayer
-        )
-
-
-        nodeLayer.addChild(
-            gameNodeRenderer
-                .containerNode
-        )
-
+        // Road, route-line, and map-marker renderers intentionally remain
+        // detached. Their domain logic is retained elsewhere, while the card
+        // renderer owns visible nodes, route state, and selection styling.
 
         timeIndicatorLayer.addChild(
             currentTimeRenderer
-                .containerNode
-        )
-
-
-        selectionLayer.addChild(
-            roadSelectionRenderer
                 .containerNode
         )
     }
@@ -711,9 +737,10 @@ private extension VirtualMapScene {
 
     func configureCoordinateGrid() {
 
-        // Step 3 resets the old debug grid and prepares the dynamic
-        // rounded-island / road-dash renderer.
+        // Preserve the deterministic Cartesian cell pitch, but render each
+        // cell as a standalone card rather than an island between roads.
         gridRenderer.rebuild()
+        refreshTilePresentation(animated: false)
     }
 }
 
@@ -742,11 +769,8 @@ private extension VirtualMapScene {
 
     func configureGameNodes() {
 
-        gameNodeRenderer.render(
-            nodes:
-                gameNodes,
-            roadGraph:
-                roadGraph
+        refreshTilePresentation(
+            animated: false
         )
     }
 }
@@ -781,23 +805,27 @@ extension VirtualMapScene {
         gameNodes =
             nodes
 
-
-        gameNodeRenderer.render(
-            nodes:
-                gameNodes,
-            roadGraph:
-                roadGraph
-        )
-
-
-        gameNodeRenderer
-            .renderSelection(
-                selectedNodeID:
-                    currentSelection
-                        .selectedNodeID
-            )
+        refreshTilePresentation()
     }
 }
+
+// =====================================================
+// MARK: - Tile Reveal API
+// =====================================================
+
+extension VirtualMapScene {
+
+    func renderRevealedTiles(
+        _ ids: Set<GridCellID>
+    ) {
+
+        revealedTileIDs =
+            ids
+
+        refreshTilePresentation()
+    }
+}
+
 
 // =====================================================
 // MARK: - Current Time API
@@ -817,6 +845,23 @@ extension VirtualMapScene {
         currentTimeRenderer.render(
             time:
                 time
+        )
+    }
+
+
+    func renderCurrentProgress(
+        _ percent: Double
+    ) {
+
+        guard currentProgressPercent != percent else {
+            return
+        }
+
+        currentProgressPercent =
+            percent
+
+        refreshTilePresentation(
+            animated: false
         )
     }
 
@@ -856,53 +901,58 @@ extension VirtualMapScene {
             SelectionState
     ) {
 
-        // =================================================
-        // Store Current Selection
-        // =================================================
-
         currentSelection =
             selection
 
-
-        // =================================================
-        // Road Edge / Vertex Selection
-        // =================================================
-
-        // Road/intersection taps are now creation anchors, not selections.
-        // Keep the legacy renderer allocated for source compatibility, but do
-        // not draw a road-selection halo/color change.
+        // Legacy road-selection and marker-selection layers are intentionally
+        // empty in tile mode. Selection is expressed by the tile perimeter.
         roadSelectionRenderer.clear()
 
-
-        // =================================================
-        // Game Node Selection
-        // =================================================
-
-        // Do NOT rebuild game nodes just because selection changed.
-        // Rebuilding cancels remote image tasks and can cause marker flicker.
-        // Selection is a cheap visual toggle on the already-rendered nodes.
-        gameNodeRenderer
-            .renderSelection(
-                selectedNodeID:
-                    selection
-                        .selectedNodeID
-            )
-
-
-        // =================================================
-        // Route Selection
-        // =================================================
-
-        routeRenderer.render(
-            currentRouteRenderState,
-            graph:
-                roadGraph,
-            selectedRouteID:
-                selection
-                    .selectedRouteID
+        refreshTilePresentation(
+            animated: false
         )
     }
 }
+
+// =====================================================
+// MARK: - Tile Presentation
+// =====================================================
+
+private extension VirtualMapScene {
+
+    func refreshTilePresentation(
+        animated: Bool = true
+    ) {
+
+        let state =
+            DayMapTileResolver
+                .makeRenderState(
+                    gameNodes:
+                        gameNodes,
+                    roadGraph:
+                        roadGraph,
+                    routes:
+                        currentRouteRenderState,
+                    preview:
+                        currentRoutePreviewRenderState,
+                    selection:
+                        currentSelection,
+                    revealedCellIDs:
+                        revealedTileIDs,
+                    currentProgressPercent:
+                        currentProgressPercent,
+                    focusedAlternativeRouteID:
+                        focusedAlternativeRouteID
+                )
+
+
+        gridRenderer.render(
+            state,
+            animated: animated
+        )
+    }
+}
+
 
 // =====================================================
 // MARK: - Diagnostics
@@ -1223,6 +1273,14 @@ extension VirtualMapScene {
         // Semantic Tap
         // =========================================
 
+        // Alternate-route preview mode disables only semantic map taps.
+        // Camera pan/pinch handling has already happened above, so those
+        // gestures remain fully available while the preview overlay is shown.
+        guard semanticTapsEnabled else {
+            return
+        }
+
+
         guard let touch =
             touches.first
         else {
@@ -1310,136 +1368,17 @@ private extension VirtualMapScene {
                 )
 
 
-        let tolerance =
-            worldHitTolerance(
-                touch:
-                    touch,
-                screenPoints:
-                    18
-            )
-
-
-        // =========================================
-        // 1. Game Node
-        // =========================================
-
-        if let nodeID =
-            gameNodeHitTester
-                .hitTest(
-                    at:
-                        point,
-                    nodes:
-                        gameNodes,
-                    roadGraph:
-                        roadGraph,
-                    tolerance:
-                        tolerance
-                )
-        {
-
-            emit(
-                .gameNodeTapped(
-                    nodeID:
-                        nodeID,
-                    worldPoint:
-                        worldPoint,
-                    mapCoordinate:
-                        mapCoordinate
-                )
-            )
-
-
-            return
-        }
-        
         // =====================================================
-        // 2. ROUTE
+        // Tile/Card Interaction
         // =====================================================
 
-        if let routeTarget =
-            routeHitTester.hitTest(
-                at:
-                    point,
-                state:
-                    currentRouteRenderState,
-                graph:
-                    roadGraph,
-                tolerance:
-                    tolerance
-            )
-        {
-
-            emit(
-                .routeTapped(
-                    target:
-                        routeTarget,
-                    worldPoint:
-                        worldPoint,
-                    mapCoordinate:
-                        mapCoordinate
+        guard let cellID =
+            gridRenderer
+                .tileCellID(
+                    hitByWorldPoint:
+                        point
                 )
-            )
-
-
-            return
-        }
-
-
-        // =========================================
-        // 2. Road Geometry
-        // =========================================
-
-        let roadHit =
-            roadHitTester
-                .hitTest(
-                    at:
-                        point,
-                    graph:
-                        roadGraph,
-                    tolerance:
-                        tolerance
-                )
-
-
-        switch roadHit {
-
-        case let .vertex(
-            id: vertexID,
-            worldPoint: resolvedWorldPoint,
-            mapCoordinate: resolvedMapCoordinate
-        ):
-
-            emit(
-                .roadVertexTapped(
-                    vertexID:
-                        vertexID,
-                    worldPoint:
-                        resolvedWorldPoint,
-                    mapCoordinate:
-                        resolvedMapCoordinate
-                )
-            )
-
-
-        case let .edge(
-            id: edgeID,
-            worldPoint: resolvedWorldPoint,
-            mapCoordinate: resolvedMapCoordinate
-        ):
-
-            emit(
-                .roadEdgeTapped(
-                    edgeID:
-                        edgeID,
-                    worldPoint:
-                        resolvedWorldPoint,
-                    mapCoordinate:
-                        resolvedMapCoordinate
-                )
-            )
-
-
-        case nil:
+        else {
 
             emit(
                 .backgroundTapped(
@@ -1449,7 +1388,58 @@ private extension VirtualMapScene {
                         mapCoordinate
                 )
             )
+
+            return
         }
+
+
+        let snapshot =
+            gridRenderer
+                .snapshot(
+                    for: cellID
+                )
+
+
+        // Once an empty card has been revealed, only the Add Stop label at
+        // the bottom of that face emits a semantic action. The rest of the
+        // empty face is informational (time / Piper / progress delta).
+        if snapshot.revealState == .revealed,
+           !snapshot.hasNode,
+           !gridRenderer.isAddStopActionHit(
+                worldPoint: point,
+                in: cellID
+           )
+        {
+            return
+        }
+
+
+        // Taps resolve to the semantic center of the card rather than the
+        // exact finger position. This keeps Add Node placement deterministic
+        // and aligns every created item with the square-card UI.
+        let tileCoordinate =
+            GridMapGeometry
+                .mapCoordinateAtTileCenter(
+                    for: cellID
+                )
+
+
+        emit(
+            .dayTileTapped(
+                cellID:
+                    cellID,
+                nodeID:
+                    snapshot.primaryNodeID,
+                routeTarget:
+                    snapshot.routeInteractionTarget,
+                isRevealed:
+                    snapshot.revealState == .revealed,
+                worldPoint:
+                    worldPoint,
+                mapCoordinate:
+                    tileCoordinate
+            )
+        )
     }
 
 

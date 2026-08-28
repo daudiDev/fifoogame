@@ -282,7 +282,7 @@ struct GameNodeEditorView: View {
                 )
             }
             .confirmationDialog(
-                "Delete this node?",
+                "Delete this stop?",
                 isPresented:
                     $isShowingDeleteConfirmation,
                 titleVisibility:
@@ -290,7 +290,7 @@ struct GameNodeEditorView: View {
             ) {
 
                 Button(
-                    "Delete Node",
+                    "Delete Stop",
                     role:
                         .destructive
                 ) {
@@ -312,7 +312,7 @@ struct GameNodeEditorView: View {
             } message: {
 
                 Text(
-                    "This removes the node from the map."
+                    "This removes the stop from the map."
                 )
             }
         }
@@ -889,7 +889,7 @@ private extension GameNodeEditorView {
         } label: {
 
             Label(
-                "Delete Node",
+                "Delete Stop",
                 systemImage:
                     "trash"
             )

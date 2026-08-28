@@ -75,6 +75,35 @@ extension WorkoutSessionManager {
                 updatedAt: Date()
             )
     }
+
+
+    /// Changes the current exercise without exposing direct Workout mutation to
+    /// SwiftUI. SocketManager uses this as the centralized UI action gateway.
+    func setCurrentExercise(
+        id: UUID
+    ) {
+
+        var updatedWorkout =
+            socketManager.workout
+
+        guard updatedWorkout.exercises.contains(
+            where: {
+                $0.workoutExerciseId == id
+            }
+        ) else {
+
+            return
+        }
+
+        updatedWorkout.currentWorkoutExerciseID =
+            id
+
+        updatedWorkout.updatedAt =
+            Date()
+
+        socketManager.workout =
+            updatedWorkout
+    }
 }
 
 

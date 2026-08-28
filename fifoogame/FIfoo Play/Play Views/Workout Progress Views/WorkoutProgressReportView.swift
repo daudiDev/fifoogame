@@ -10,7 +10,7 @@ import SwiftUI
 
 struct WorkoutProgressReportView: View {
     
-    private let session = WorkoutSessionManager.shared
+    private let socketManager = SocketManager.shared
     @Binding var showProgressView: Bool
     
     var body: some View {
@@ -24,27 +24,27 @@ struct WorkoutProgressReportView: View {
                         // MARK: - Header
                         
                         WorkoutReportHeader(
-                            workout: session.workout
+                            workout: socketManager.workout
                         )
                         
                         
                         // MARK: - Overall Progress
                         
                         WorkoutOverallProgressSection(
-                            workout: session.workout
+                            workout: socketManager.workout
                         )
                         
                         
                         // MARK: - Workout Timing
                         
                         WorkoutTimingSection(
-                            workout: session.workout
+                            workout: socketManager.workout
                         )
                         
                         
                         // MARK: - Current Exercise
                         
-                        if let currentExercise = session.workout.currentExercise {
+                        if let currentExercise = socketManager.workout.currentExercise {
                             
                             WorkoutCurrentExerciseSection(
                                 exercise: currentExercise
@@ -55,7 +55,7 @@ struct WorkoutProgressReportView: View {
                         // MARK: - Exercise Breakdown
                         
                         WorkoutExerciseProgressSection(
-                            exercises: session.workout.exercises
+                            exercises: socketManager.workout.exercises
                         )
                     }
                     .padding()

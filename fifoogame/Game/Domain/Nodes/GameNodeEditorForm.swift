@@ -155,7 +155,7 @@ private extension GameNodeEditorForm {
     var identitySection: some View {
 
         Section(
-            "Node"
+            "Stop"
         ) {
 
             LabeledContent(
@@ -175,7 +175,7 @@ private extension GameNodeEditorForm {
             ) {
 
                 Text(
-                    "Node ID"
+                    "Stop ID"
                 )
                 .font(
                     .caption
@@ -628,7 +628,7 @@ private extension GameNodeEditorForm {
                 }
 
                 Text(
-                    "No profile snapshot is stored on this user node yet."
+                    "No profile snapshot is stored on this user stop yet."
                 )
                 .font(
                     .caption
@@ -885,7 +885,7 @@ private extension GameNodeEditorForm {
             if isRoadVertexPlacement {
 
                 Text(
-                    "This user node is attached to a road intersection, so its map time follows that intersection."
+                    "This user stop is attached to a road intersection, so its map time follows that intersection."
                 )
                 .font(
                     .caption
@@ -1023,7 +1023,7 @@ private extension GameNodeEditorForm {
 
 
             Text(
-                "Changing Start Time also moves this node to that time on the day map. If the node was attached to a road intersection, it becomes a free-position node at the same progress instead of being silently snapped to another road."
+                "Changing Start Time also moves this stop to that time on the day map. If the stop was attached to a road intersection, it becomes a free-position stop at the same progress instead of being silently snapped to another road."
             )
             .font(
                 .caption
@@ -1164,7 +1164,7 @@ private extension GameNodeEditorForm {
             } else {
 
                 Text(
-                    "No Suggested Meal details are stored on this node yet."
+                    "No Suggested Meal details are stored on this stop yet."
                 )
                 .foregroundStyle(
                     .secondary
@@ -1288,7 +1288,7 @@ private extension GameNodeEditorForm {
             } else {
 
                 Text(
-                    "No Workout details are stored on this node yet."
+                    "No Workout details are stored on this stop yet."
                 )
                 .foregroundStyle(
                     .secondary
@@ -1358,7 +1358,7 @@ private extension GameNodeEditorForm {
             } else {
 
                 Text(
-                    "No Task details are stored on this node yet."
+                    "No Task details are stored on this stop yet."
                 )
                 .foregroundStyle(
                     .secondary
@@ -1846,7 +1846,7 @@ private extension GameNodeEditorForm {
         ) {
 
             DatePicker(
-                "Node Time",
+                "Stop Time",
                 selection:
                     nodeTimeBinding,
                 displayedComponents:
@@ -1860,7 +1860,7 @@ private extension GameNodeEditorForm {
             if isRoadVertexPlacement {
 
                 Text(
-                    "This node is attached to a road intersection, so its time follows that intersection."
+                    "This stop is attached to a road intersection, so its time follows that intersection."
                 )
                 .font(
                     .caption
@@ -1872,7 +1872,7 @@ private extension GameNodeEditorForm {
             } else {
 
                 Text(
-                    "Time is stored directly on the GameMapNode and also controls the node's vertical map position."
+                    "Time is stored directly on the stop record and also controls the stop's vertical map position."
                 )
                 .font(
                     .caption
@@ -1946,7 +1946,7 @@ private extension GameNodeEditorForm {
     var imageSection: some View {
 
         Section(
-            "Node Image"
+            "Stop Image"
         ) {
 
             Picker(
@@ -1974,7 +1974,7 @@ private extension GameNodeEditorForm {
             case .none:
 
                 Text(
-                    "No custom image selected. This node will use its type-specific placeholder image."
+                    "No custom image selected. This stop will use its type-specific placeholder image."
                 )
                 .font(
                     .caption
@@ -2326,8 +2326,8 @@ private extension GameNodeEditorForm {
 
             Text(
                 node.isEnabled
-                    ? "The node is visible and interactive on the map."
-                    : "The node will not be rendered or interactive on the map."
+                    ? "The stop is visible and interactive on the map."
+                    : "The stop will not be rendered or interactive on the map."
             )
             .font(
                 .caption
@@ -4125,7 +4125,7 @@ private extension GameNodeEditorForm {
 
 
                 Text(
-                    "This node is a normal object on the time/progress plane and is not currently positioned on road geometry."
+                    "This stop is a normal object on the time/progress plane and is not currently positioned on road geometry."
                 )
                 .font(
                     .caption
@@ -4337,7 +4337,7 @@ private extension GameNodeEditorForm {
         {
 
             Label(
-                "No Road Route Connection",
+                "No Road Path Connection",
                 systemImage:
                     "circle"
             )
@@ -4347,7 +4347,7 @@ private extension GameNodeEditorForm {
 
 
             Text(
-                "This is expected for nodes that do not lie on a road."
+                "This is expected for stops that do not lie on a road."
             )
             .font(
                 .caption

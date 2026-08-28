@@ -2,14 +2,10 @@
 //  MapCameraController.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/18/26.
+//  Created by Daudi Sagala on 8/25/26.
 //
 
 
-//
-//  MapCameraController.swift
-//  Fifoo
-//
 
 import SpriteKit
 import UIKit
@@ -32,6 +28,18 @@ final class MapCameraController:
     private let minimumCameraScale: CGFloat = 0.20
 
     private let configuredMaximumCameraScale: CGFloat = 0.70
+
+
+    // MARK: - Vertical Presentation Padding
+
+    /// The SpriteKit map renders underneath the SwiftUI top/bottom overlays.
+    /// These clearances let the semantic 12:00 AM and 11:59 PM boundaries
+    /// move past the physical viewport edge far enough to sit on the visible
+    /// side of those overlays. They are VIEW points, not Fifoo world units,
+    /// so the apparent padding remains stable while zooming.
+    private let topOverlayClearanceViewPoints: CGFloat = 160
+
+    private let bottomOverlayClearanceViewPoints: CGFloat = 110
 
 
     // MARK: - Center Animation
@@ -1185,7 +1193,9 @@ private extension MapCameraController {
                 clampedCameraY(
                     proposed.y,
                     visibleHeight:
-                        visible.height
+                        visible.height,
+                    viewHeight:
+                        view.bounds.height
                 )
         )
     }
@@ -1241,22 +1251,59 @@ private extension MapCameraController {
 
     func clampedCameraY(
         _ proposedY: CGFloat,
-        visibleHeight: CGFloat
+        visibleHeight: CGFloat,
+        viewHeight: CGFloat
     ) -> CGFloat {
 
         let worldHeight =
             MapWorldConfiguration.height
 
 
-        guard visibleHeight > 0 else {
+        guard
+            visibleHeight > 0,
+            viewHeight > 0
+        else {
 
             return proposedY
         }
 
 
-        guard visibleHeight < worldHeight else {
+        /*
+         Convert the SwiftUI overlay clearances from view points into the
+         current SpriteKit world scale. This is intentionally calculated
+         from the current visible world height rather than from cameraScale
+         directly so it remains correct with SpriteKit's scene/view fitting.
+         */
 
-            return -worldHeight / 2
+        let worldPointsPerViewPoint =
+            visibleHeight
+            / viewHeight
+
+
+        let topPadding =
+            topOverlayClearanceViewPoints
+            * worldPointsPerViewPoint
+
+
+        let bottomPadding =
+            bottomOverlayClearanceViewPoints
+            * worldPointsPerViewPoint
+
+
+        let paddedWorldHeight =
+            worldHeight
+            + topPadding
+            + bottomPadding
+
+
+        // If the zoom level exposes the entire padded vertical world, keep
+        // the camera centered in that presentation range rather than the
+        // unpadded 24-hour domain.
+        guard visibleHeight < paddedWorldHeight else {
+
+            return
+                (topPadding - worldHeight - bottomPadding)
+                / 2
         }
 
 
@@ -1264,13 +1311,27 @@ private extension MapCameraController {
             visibleHeight / 2
 
 
+        /*
+         Semantic day bounds stay exactly:
+
+             12:00 AM  y = 0
+             11:59 PM  y ≈ -worldHeight
+
+         Only CAMERA travel is extended. At the top, the camera may move
+         above y = 0 enough to pull midnight BELOW the top overlay. At the
+         bottom, it may move below the day enough to pull 11:59 PM ABOVE the
+         bottom overlay. No route/node/time coordinate is altered.
+         */
+
         let highest =
             -half
+            + topPadding
 
 
         let lowest =
             -worldHeight
             + half
+            - bottomPadding
 
 
         return min(

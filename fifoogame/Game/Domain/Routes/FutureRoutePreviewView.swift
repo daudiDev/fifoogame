@@ -11,6 +11,9 @@ import SwiftUI
 
 struct FutureRoutePreviewView: View {
 
+    private let socketManager =
+        SocketManager.shared
+
     @ObservedObject
     var store:
         GameStore
@@ -60,7 +63,7 @@ struct FutureRoutePreviewView: View {
                 } footer: {
 
                     Text(
-                        "Plan the route again from your latest position before committing."
+                        "Plan the path again from your latest position before committing."
                     )
                 }
             }
@@ -72,13 +75,13 @@ struct FutureRoutePreviewView: View {
             confirmSection
         }
         .navigationTitle(
-            "Route Preview"
+            "Path Preview"
         )
         .navigationBarTitleDisplayMode(
             .inline
         )
         .alert(
-            "Route Could Not Be Updated",
+            "Path Could Not Be Updated",
             isPresented:
                 Binding(
                     get: {
@@ -118,11 +121,11 @@ struct FutureRoutePreviewView: View {
                 .isEditingExistingRoute
         {
 
-            return "Replacement for Current Route"
+            return "Replacement for Current Path"
         }
 
 
-        return "New Future Route"
+        return "New Future Path"
     }
     
 }
@@ -150,7 +153,7 @@ private extension FutureRoutePreviewView {
 
 
                 LabeledContent(
-                    "Route Options",
+                    "Path Options",
                     value:
                         "\(preview.allRoutes.count)"
                 )
@@ -169,7 +172,7 @@ private extension FutureRoutePreviewView {
                 {
 
                     Label(
-                        "Starts from your current route position",
+                        "Starts from your current path position",
                         systemImage:
                             "location.fill"
                     )
@@ -193,7 +196,7 @@ private extension FutureRoutePreviewView {
         {
 
             Section(
-                "Choose Route"
+                "Choose Path"
             ) {
 
                 ForEach(
@@ -265,7 +268,7 @@ private extension FutureRoutePreviewView {
 
                     Text(
                         index == 0
-                        ? "Recommended Route"
+                        ? "Recommended Path"
                         : "Alternative \(index)"
                     )
                     .fontWeight(
@@ -327,7 +330,7 @@ private extension FutureRoutePreviewView {
             RouteID
     ) {
 
-        store
+        socketManager
             .selectFutureRoutePreview(
                 routeID:
                     routeID
@@ -349,7 +352,7 @@ private extension FutureRoutePreviewView {
             } label: {
 
                 Label(
-                    "Use This Route",
+                    "Use This Path",
                     systemImage:
                         "checkmark.circle.fill"
                 )
@@ -387,7 +390,7 @@ private extension FutureRoutePreviewView {
     func commitRoute() {
 
         let result =
-            store
+            socketManager
                 .commitFutureRoutePreview()
 
 
@@ -415,31 +418,31 @@ private extension FutureRoutePreviewView {
         case .noPreview:
 
             return
-                "The route preview is no longer available."
+                "The path preview is no longer available."
 
 
         case .selectedRouteUnavailable:
 
             return
-                "The selected route is no longer available."
+                "The selected path is no longer available."
 
 
         case .selectedRouteNotPlanned:
 
             return
-                "The selected route is not fully planned."
+                "The selected path is not fully planned."
 
 
         case .sourceRouteChanged:
 
             return
-                "The current live route changed while you were editing it. Open the route editor again."
+                "The current live path changed while you were editing it. Open the path editor again."
 
 
         case .timeMovedBackward:
 
             return
-                "The route history could not be advanced to the current time."
+                "The path history could not be advanced to the current time."
 
 
         case .currentPositionChanged:
@@ -451,7 +454,7 @@ private extension FutureRoutePreviewView {
         case .none:
 
             return
-                "The route could not be updated."
+                "The path could not be updated."
         }
     }
 }

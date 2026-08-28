@@ -18,6 +18,21 @@ enum SceneInteraction:
     )
 
 
+    /// Primary interaction for the redesigned card-based day map.
+    ///
+    /// A tile may contain a game node, represent a route state, or be an
+    /// unrevealed/empty card. The scene resolves those presentation details
+    /// and emits one semantic interaction to the app layer.
+    case dayTileTapped(
+        cellID: GridCellID,
+        nodeID: GameNodeID?,
+        routeTarget: RouteInteractionTarget?,
+        isRevealed: Bool,
+        worldPoint: WorldPoint,
+        mapCoordinate: MapCoordinate
+    )
+
+
     case roadEdgeTapped(
         edgeID: RoadEdgeID,
         worldPoint: WorldPoint,

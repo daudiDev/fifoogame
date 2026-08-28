@@ -93,6 +93,25 @@ private extension ActivityTypeEditorView {
 
         Form {
 
+            Section {
+
+                MealPlayablePathView(
+                    mealTitle:
+                        mealBinding
+                            .wrappedValue
+                            .title,
+                    scheduledTime:
+                        activityStartTime
+                )
+
+            } header: {
+
+                Text(
+                    "Playable Meal Path"
+                )
+            }
+
+
             Section(
                 "Suggested Meal"
             ) {
@@ -781,6 +800,20 @@ private extension ActivityTypeEditorView {
     }
 
 
+    var activityStartTime: String {
+
+        guard case let .activity(
+            content
+        ) = node.content
+        else {
+
+            return ""
+        }
+
+        return content.startTime
+    }
+
+
     var defaultMealSummary:
         ActivityMealNodeSummary {
 
@@ -842,6 +875,7 @@ private extension ActivityTypeEditorView {
         )
     }
 }
+
 
 
 // =====================================================

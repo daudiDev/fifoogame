@@ -78,12 +78,29 @@ struct GameNodeRouteAnchorResolver {
 
         case .offRoad:
 
-            /*
-             This is perfectly valid.
+            // Tile-map migration:
+            //
+            // A card is centered inside a deterministic GridCellID, while the
+            // retained pathfinding graph still runs along the old cell
+            // boundaries. Card-centered nodes therefore look "off road" even
+            // though they must remain usable as route stops in the new UI.
+            //
+            // Only the canonical GridRoadGraph receives this fallback. The
+            // node itself is NOT snapped or mutated; we create an internal
+            // routing anchor at the nearest traversable hidden edge.
+            if graph.id == GridRoadGraph.graphID,
+               let fallbackLocation =
+                tileRouteFallbackLocation(
+                    for: nodeCoordinate,
+                    graph: graph
+                ) {
 
-             It simply means this node cannot act as
-             a road-route anchor.
-             */
+                return GameNodeRouteAnchor(
+                    nodeID: node.id,
+                    nodeCoordinate: nodeCoordinate,
+                    roadLocation: fallbackLocation
+                )
+            }
 
             return nil
 
@@ -158,6 +175,125 @@ struct GameNodeRouteAnchorResolver {
         }
     }
 }
+
+// =====================================================
+// MARK: - Tile Map Routing Fallback
+// =====================================================
+
+private extension GameNodeRouteAnchorResolver {
+
+    func tileRouteFallbackLocation(
+        for coordinate: MapCoordinate,
+        graph: RoadGraph
+    ) -> GameNodeRouteAnchor.RoadLocation? {
+
+        let worldPoint =
+            MapCoordinateConverter
+                .worldPoint(
+                    for: coordinate
+                )
+
+
+        var best:
+            (
+                edgeID: RoadEdgeID,
+                fraction: Double,
+                distance: Double,
+                timeDelta: Double
+            )?
+
+
+        for edge in graph.edges {
+
+            guard
+                edge.attributes.isTraversable,
+                edge.travelDirection != .closed,
+                let projection =
+                    RoadEdgeGeometry
+                        .projection(
+                            of: worldPoint,
+                            onto: edge,
+                            graph: graph
+                        )
+            else {
+                continue
+            }
+
+
+            let projectedCoordinate =
+                MapCoordinateConverter
+                    .mapCoordinate(
+                        for: projection.point
+                    )
+
+            let candidate =
+                (
+                    edgeID: edge.id,
+                    fraction: projection.fraction,
+                    distance: projection.distance,
+                    timeDelta:
+                        abs(
+                            projectedCoordinate
+                                .time
+                                .secondsFromMidnight
+                            - coordinate
+                                .time
+                                .secondsFromMidnight
+                        )
+                )
+
+
+            guard let current = best else {
+
+                best = candidate
+                continue
+            }
+
+
+            let distanceDelta =
+                abs(
+                    candidate.distance
+                    - current.distance
+                )
+
+
+            if candidate.distance < current.distance {
+
+                best = candidate
+
+            } else if distanceDelta < 0.000_1 {
+
+                let timeDeltaDifference =
+                    abs(
+                        candidate.timeDelta
+                        - current.timeDelta
+                    )
+
+                if candidate.timeDelta < current.timeDelta
+                    || (
+                        timeDeltaDifference < 0.000_1
+                        && candidate.edgeID.rawValue
+                            < current.edgeID.rawValue
+                    ) {
+
+                    best = candidate
+                }
+            }
+        }
+
+
+        guard let best else {
+            return nil
+        }
+
+
+        return .edge(
+            edgeID: best.edgeID,
+            fraction: best.fraction
+        )
+    }
+}
+
 
 // =====================================================
 // MARK: - Route Eligibility

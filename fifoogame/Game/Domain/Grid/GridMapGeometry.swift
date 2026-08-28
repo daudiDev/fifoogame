@@ -625,6 +625,255 @@ enum GridMapGeometry {
 
 
     // =====================================================
+    // MARK: - Tile/Card Geometry
+    // =====================================================
+
+    /// Visual gap between neighboring cards in the redesigned day map.
+    ///
+    /// This intentionally does not change the semantic grid pitch. The old
+    /// road topology can therefore continue to power routing/pathfinding while
+    /// the visible UI reads as a field of cards instead of streets.
+    static var tileGapWorld: CGFloat {
+
+        // Pass 3: give the cards enough breathing room to read as discrete
+        // islands rather than a nearly continuous board. The semantic pitch
+        // is unchanged, so routing/time/progress math is untouched.
+        min(
+            22,
+            GridMapConfiguration.cellPitchWorld * 0.18
+        )
+    }
+
+
+    /// Square card rectangle centered inside the existing deterministic cell.
+    static func tileRect(
+        for id: GridCellID
+    ) -> CGRect {
+
+        footprintRect(
+            for: id
+        )
+        .insetBy(
+            dx: tileGapWorld / 2,
+            dy: tileGapWorld / 2
+        )
+    }
+
+
+    static func tileCenter(
+        for id: GridCellID
+    ) -> CGPoint {
+
+        let rect =
+            tileRect(
+                for: id
+            )
+
+        return CGPoint(
+            x: rect.midX,
+            y: rect.midY
+        )
+    }
+
+
+    /// Deterministically resolves a world point to the cell footprint that
+    /// contains it. Rows remain limited to the semantic 24-hour day.
+    static func cellID(
+        containingWorldPoint point: CGPoint
+    ) -> GridCellID? {
+
+        let pitch =
+            GridMapConfiguration
+                .cellPitchWorld
+
+        guard pitch > 0 else {
+            return nil
+        }
+
+        let column =
+            Int(
+                floor(
+                    (point.x - origin.x)
+                    / pitch
+                )
+            )
+
+        let row =
+            Int(
+                floor(
+                    (origin.y - point.y)
+                    / pitch
+                )
+            )
+
+        guard
+            row >= 0,
+            row <= GridMapConfiguration.maximumDayRow
+        else {
+            return nil
+        }
+
+        return GridCellID(
+            column: column,
+            row: row
+        )
+    }
+
+
+    static func cellID(
+        containing coordinate: MapCoordinate
+    ) -> GridCellID? {
+
+        let point =
+            MapCoordinateConverter
+                .worldPoint(
+                    for: coordinate
+                )
+                .cgPoint
+
+        return cellID(
+            containingWorldPoint: point
+        )
+    }
+
+
+    /// Resolves to the nearest card center. This is used to project the old
+    /// hidden road-route geometry into a visible sequence of route cards.
+    static func cellID(
+        nearestToWorldPoint point: CGPoint
+    ) -> GridCellID? {
+
+        guard let containing =
+            cellID(
+                containingWorldPoint: point
+            )
+        else {
+            return nil
+        }
+
+        var candidates:
+            [GridCellID] = []
+
+        for rowOffset in -1...1 {
+
+            let row =
+                containing.row
+                + rowOffset
+
+            guard
+                row >= 0,
+                row <= GridMapConfiguration.maximumDayRow
+            else {
+                continue
+            }
+
+            for columnOffset in -1...1 {
+
+                candidates.append(
+                    GridCellID(
+                        column:
+                            containing.column
+                            + columnOffset,
+                        row: row
+                    )
+                )
+            }
+        }
+
+        return candidates.min { lhs, rhs in
+
+            let l =
+                tileCenter(
+                    for: lhs
+                )
+
+            let r =
+                tileCenter(
+                    for: rhs
+                )
+
+            let ld =
+                hypot(
+                    l.x - point.x,
+                    l.y - point.y
+                )
+
+            let rd =
+                hypot(
+                    r.x - point.x,
+                    r.y - point.y
+                )
+
+            if abs(ld - rd) < 0.0001 {
+
+                // Exact street-boundary ties belong to the deterministic
+                // footprint returned by `cellID(containingWorldPoint:)`.
+                // This keeps a hidden routing anchor on a card edge visually
+                // associated with that same card rather than its neighbor.
+                if lhs == containing {
+                    return true
+                }
+
+                if rhs == containing {
+                    return false
+                }
+
+                if lhs.row != rhs.row {
+                    return lhs.row < rhs.row
+                }
+
+                return lhs.column < rhs.column
+            }
+
+            return ld < rd
+        }
+    }
+
+
+    /// Returns a cell only when the point is actually inside the visible card
+    /// rectangle. Gaps between cards remain ordinary map background.
+    static func tileCellID(
+        hitByWorldPoint point: CGPoint
+    ) -> GridCellID? {
+
+        guard let id =
+            cellID(
+                containingWorldPoint: point
+            )
+        else {
+            return nil
+        }
+
+        return tileRect(
+            for: id
+        )
+        .contains(point)
+        ? id
+        : nil
+    }
+
+
+    static func mapCoordinateAtTileCenter(
+        for id: GridCellID
+    ) -> MapCoordinate {
+
+        let center =
+            tileCenter(
+                for: id
+            )
+
+        return MapCoordinateConverter
+            .mapCoordinate(
+                for:
+                    WorldPoint(
+                        x: Double(center.x),
+                        y: Double(center.y)
+                    )
+            )
+    }
+
+
+    // =====================================================
     // MARK: - Visible Region
     // =====================================================
 

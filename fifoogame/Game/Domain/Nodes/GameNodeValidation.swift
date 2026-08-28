@@ -507,7 +507,7 @@ private extension GameNodeValidator {
                     severity:
                         .warning,
                     message:
-                        "SF Symbol marker images are legacy. This node will render its type-specific placeholder until you choose an Asset or Remote image."
+                        "SF Symbol marker images are legacy. This stop will render its type-specific placeholder until you choose an Asset or Remote image."
                 )
             )
 
@@ -609,7 +609,7 @@ private extension GameNodeValidator {
                         severity:
                             .warning,
                         message:
-                            "This node is outside the currently explorable progress range."
+                            "This stop is outside the currently explorable progress range."
                     )
                 )
             }
@@ -652,7 +652,7 @@ private extension GameNodeValidator {
                         id:
                             "placement.vertex.unsupported",
                         message:
-                            "This road point cannot be used for node placement."
+                            "This road point cannot be used for stop placement."
                     )
                 )
             }

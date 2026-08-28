@@ -68,25 +68,27 @@ enum RouteVisualTheme {
 
 
     static let completedWidth:
-        CGFloat = 24
+        CGFloat = 8
 
 
     static let completedHaloWidth:
-        CGFloat = 30
+        CGFloat = 10
 
 
     // =====================================================
     // MARK: - Chosen Future
     // =====================================================
 
+    /// Dominant stripe color for the chosen/future route. The tile renderer
+    /// alternates this green with white around the island perimeter.
     static let chosenColor =
         SKColor(
             red:
-                132 / 255,
+                92 / 255,
             green:
-                190 / 255,
+                220 / 255,
             blue:
-                239 / 255,
+                161 / 255,
             alpha:
                 1
         )
@@ -95,43 +97,45 @@ enum RouteVisualTheme {
     static let chosenHaloColor =
         SKColor(
             red:
-                132 / 255,
+                92 / 255,
             green:
-                190 / 255,
+                220 / 255,
             blue:
-                239 / 255,
+                161 / 255,
             alpha:
                 0.18
         )
 
 
     static let chosenWidth:
-        CGFloat = 21
+        CGFloat = 7
 
 
     static let chosenHaloWidth:
-        CGFloat = 27
+        CGFloat = 9
 
 
     // =====================================================
     // MARK: - Alternatives
     // =====================================================
 
+    /// Dominant stripe color for alternate routes. The tile renderer
+    /// alternates this orange with white around the island perimeter.
     static let alternativeColor =
         SKColor(
             red:
-                198 / 255,
+                1.0,
             green:
-                213 / 255,
+                0.55,
             blue:
-                226 / 255,
+                0.20,
             alpha:
-                0.52
+                1
         )
 
 
     static let alternativeWidth:
-        CGFloat = 21
+        CGFloat = 7
 
 
     // =====================================================
@@ -202,14 +206,14 @@ enum RouteVisualTheme {
 
 
     static let previewSelectedWidth:
-        CGFloat = 24
+        CGFloat = 8
 
 
     static let previewSelectedHaloWidth:
-        CGFloat = 30
+        CGFloat = 10
 
 
     static let previewAlternativeWidth:
-        CGFloat = 21
+        CGFloat = 7
     
 }

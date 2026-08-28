@@ -2,8 +2,9 @@
 //  GameNodeRenderer.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/24/26.
+//  Created by Daudi Sagala on 8/25/26.
 //
+
 
 
 
@@ -16,62 +17,61 @@ final class GameNodeRenderer {
 
     private enum GameNodeVisualMetrics {
 
-        static let markerRadius: CGFloat =
-            28
+        // The GameMapNode world position is the literal tip of the callout
+        // pointer. The white capsule floats above that exact coordinate.
 
-        static let markerImageRadius: CGFloat =
-            25
+        // The avatar now fills the full footprint previously occupied by
+        // the image + decorative ring. With the ring removed, the image can
+        // be larger without changing the overall callout proportions.
+        static let markerImageSize =
+            CGSize(
+                width: 50,
+                height: 50
+            )
 
-        static let markerBorderWidth: CGFloat =
-            2
-
-        static let selectionRadius: CGFloat =
-            35
-
-        static let selectionBorderWidth: CGFloat =
-            3
+        static let markerImageCenter =
+            GameNodeMarkerChrome.avatarCenter
 
         static let titleFontSize: CGFloat =
-            15
+            13
 
         static let timeFontSize: CGFloat =
-            12
+            11
 
-        // The title and time now live inside one compact map-style
-        // caption plate. Keeping the plate just below the marker makes
-        // the node readable over roads, route strokes, and land islands.
-        static let captionTopYOffset: CGFloat =
-            -34
+        // Post nodes use three compact lines: poster, subject, created-at time.
+        static let postPosterFontSize: CGFloat =
+            11.5
 
-        static let captionHorizontalPadding: CGFloat =
-            10
+        static let postSubjectFontSize: CGFloat =
+            10.5
 
-        static let captionVerticalPadding: CGFloat =
-            6
+        static let postCreatedAtFontSize: CGFloat =
+            9.5
 
-        static let captionLineSpacing: CGFloat =
-            3
+        static let captionTextX: CGFloat =
+            44
 
-        static let captionMinimumWidth: CGFloat =
-            68
+        static let titleCenterY: CGFloat =
+            GameNodeMarkerChrome.bodyCenterY + 8
 
-        // Hard visual width for a map-node title. Titles wider than this
-        // are shortened with an ellipsis before they reach SKLabelNode,
-        // so the text can never draw outside the caption plate.
+        static let timeCenterY: CGFloat =
+            GameNodeMarkerChrome.bodyCenterY - 9
+
+        static let postPosterCenterY: CGFloat =
+            GameNodeMarkerChrome.bodyCenterY + 16
+
+        static let postSubjectCenterY: CGFloat =
+            GameNodeMarkerChrome.bodyCenterY
+
+        static let postCreatedAtCenterY: CGFloat =
+            GameNodeMarkerChrome.bodyCenterY - 16
+
+        // Hard visual width for the title text before an ellipsis is added.
         static let captionMaximumTextWidth: CGFloat =
-            120
+            126
 
-        static let captionCornerRadius: CGFloat =
-            9
-
-        static let captionBorderWidth: CGFloat =
-            1
-
-        static let captionShadowOffset =
-            CGPoint(
-                x: 1.5,
-                y: -2
-            )
+        static let captionRightPadding: CGFloat =
+            16
     }
 
 
@@ -134,19 +134,52 @@ final class GameNodeRenderer {
 
         clear()
 
-        for gameNode in nodes {
+        let resolvedNodes =
+            nodes
+                .compactMap { gameNode -> (GameMapNode, CGPoint)? in
 
-            guard
-                gameNode.isEnabled,
-                let worldPoint =
-                    GameNodePlacementResolver
-                        .worldPoint(
-                            for: gameNode,
-                            graph: roadGraph
-                        )
-            else {
-                continue
-            }
+                    guard
+                        gameNode.isEnabled,
+                        let worldPoint =
+                            GameNodePlacementResolver
+                                .worldPoint(
+                                    for: gameNode,
+                                    graph: roadGraph
+                                )
+                    else {
+                        return nil
+                    }
+
+                    return (
+                        gameNode,
+                        worldPoint.cgPoint
+                    )
+                }
+                .sorted { lhs, rhs in
+
+                    // The visual stacking rule is intentionally horizontal:
+                    // when callouts overlap, the node farther to the right
+                    // must appear above the node farther to the left.
+                    if lhs.1.x != rhs.1.x {
+                        return lhs.1.x < rhs.1.x
+                    }
+
+                    if lhs.1.y != rhs.1.y {
+                        return lhs.1.y < rhs.1.y
+                    }
+
+                    return lhs.0.id.rawValue.uuidString
+                        < rhs.0.id.rawValue.uuidString
+                }
+
+        for (stackIndex, resolved) in
+            resolvedNodes.enumerated()
+        {
+            let gameNode =
+                resolved.0
+
+            let worldPoint =
+                resolved.1
 
             let root =
                 makeNode(
@@ -154,7 +187,13 @@ final class GameNodeRenderer {
                 )
 
             root.position =
-                worldPoint.cgPoint
+                worldPoint
+
+            // Leave enough separation that every child belonging to a
+            // rightward node (shadow, capsule, image, labels, selection) is
+            // above every child belonging to a leftward node.
+            root.zPosition =
+                CGFloat(stackIndex) * 100
 
             containerNode.addChild(
                 root
@@ -176,17 +215,11 @@ final class GameNodeRenderer {
         selectedNodeID: GameNodeID?
     ) {
 
-        for (
-            nodeID,
-            root
-        ) in renderedNodes {
-
-            root.childNode(
-                withName: "selectionHalo"
-            )?
-            .isHidden =
-                nodeID != selectedNodeID
-        }
+        // The old rounded-rectangle halo did not follow the location
+        // callout tail and therefore looked visually detached from the
+        // marker. Selection remains behavioral only for now; the map
+        // callout itself is left unchanged when selected.
+        _ = selectedNodeID
     }
 
 
@@ -231,6 +264,11 @@ private extension GameNodeRenderer {
         let root =
             SKNode()
 
+        let bodyWidth =
+            calloutBodyWidth(
+                for: gameNode
+            )
+
         root.name =
             "game.node.\(gameNode.id.rawValue.uuidString)"
 
@@ -256,6 +294,7 @@ private extension GameNodeRenderer {
 
         let chrome =
             GameNodeMarkerChrome.make(
+                bodyWidth: bodyWidth,
                 isSelected: false
             )
 
@@ -271,29 +310,16 @@ private extension GameNodeRenderer {
 
 
         // =============================================
-        // Selection halo
-        // =============================================
-
-        root.addChild(
-            makeSelectionHalo()
-        )
-
-
-        // =============================================
-        // Circular image marker
+        // Circular avatar inside the shared callout
         // =============================================
 
         let imageSprite =
-            makeCircularImageNode(
+            makeMarkerImageNode(
                 for: gameNode.content.kind
             )
 
         root.addChild(
             imageSprite.cropNode
-        )
-
-        root.addChild(
-            makeMarkerBorder()
         )
 
         configureImage(
@@ -303,13 +329,12 @@ private extension GameNodeRenderer {
 
 
         // =============================================
-        // Title + time caption
+        // Title + time inside the shared callout
         // =============================================
 
         root.addChild(
             makeCaptionNode(
-                title: gameNode.content.title,
-                time: gameNode.time.displayClockString
+                for: gameNode
             )
         )
 
@@ -325,64 +350,12 @@ private extension GameNodeRenderer {
 
 private extension GameNodeRenderer {
 
-    func makeSelectionHalo() -> SKShapeNode {
-
-        let halo =
-            SKShapeNode(
-                circleOfRadius:
-                    GameNodeVisualMetrics.selectionRadius
-            )
-
-        halo.name =
-            "selectionHalo"
-
-        halo.fillColor =
-            MapVisualTheme.roadSelectionHaloColor
-
-        halo.strokeColor =
-            MapVisualTheme.roadSelectionColor
-
-        halo.lineWidth =
-            GameNodeVisualMetrics.selectionBorderWidth
-
-        halo.isHidden =
-            true
-
-        halo.zPosition =
-            1
-
-        return halo
-    }
+    // The avatar intentionally has no separate backing/border in the
+    // live-location callout design. The circular crop itself defines the
+    // image edge against the white capsule.
 
 
-    func makeMarkerBorder() -> SKShapeNode {
-
-        let border =
-            SKShapeNode(
-                circleOfRadius:
-                    GameNodeVisualMetrics.markerRadius
-            )
-
-        border.name =
-            "markerBorder"
-
-        border.fillColor =
-            .clear
-
-        border.strokeColor =
-            MapVisualTheme.nodeBorderColor
-
-        border.lineWidth =
-            GameNodeVisualMetrics.markerBorderWidth
-
-        border.zPosition =
-            4
-
-        return border
-    }
-
-
-    func makeCircularImageNode(
+    func makeMarkerImageNode(
         for kind: GameNodeKind
     ) -> (
         cropNode: SKCropNode,
@@ -395,17 +368,19 @@ private extension GameNodeRenderer {
         cropNode.name =
             "markerImageCrop"
 
+        cropNode.position =
+            GameNodeVisualMetrics.markerImageCenter
+
         cropNode.zPosition =
-            3
+            6
 
         let mask =
             SKShapeNode(
                 circleOfRadius:
-                    GameNodeVisualMetrics.markerImageRadius
+                    GameNodeVisualMetrics.markerImageSize.width / 2
             )
 
-        mask.fillColor =
-            .white
+        mask.fillColor = .white.withAlphaComponent(1.0)
 
         mask.strokeColor =
             .clear
@@ -448,7 +423,151 @@ private extension GameNodeRenderer {
     }
 
 
+    /// Returns the width of the white capsule for this node. The left edge,
+    /// pointer, avatar, and text origin stay fixed; only the right edge grows
+    /// with the widest rendered text line, capped at the established maximum.
+    func calloutBodyWidth(
+        for gameNode: GameMapNode
+    ) -> CGFloat {
+
+        let widestTextWidth: CGFloat
+
+        if case let .post(content) = gameNode.content,
+           let snapshot = content.snapshot
+        {
+            let posterWidth =
+                captionLineWidth(
+                    snapshot.posterName,
+                    fontName: "HelveticaNeue-Bold",
+                    fontSize: GameNodeVisualMetrics.postPosterFontSize,
+                    fallback: "Unknown User"
+                )
+
+            let subjectWidth =
+                captionLineWidth(
+                    snapshot.subject,
+                    fontName: "HelveticaNeue-Medium",
+                    fontSize: GameNodeVisualMetrics.postSubjectFontSize,
+                    fallback: snapshot.preferredTitle
+                )
+
+            let createdAtWidth =
+                captionLineWidth(
+                    displayPostCreatedAt(
+                        snapshot.createdAt
+                    ),
+                    fontName: "HelveticaNeue",
+                    fontSize: GameNodeVisualMetrics.postCreatedAtFontSize,
+                    fallback: "Time unavailable"
+                )
+
+            widestTextWidth =
+                max(
+                    posterWidth,
+                    max(
+                        subjectWidth,
+                        createdAtWidth
+                    )
+                )
+
+        } else {
+            let titleWidth =
+                captionLineWidth(
+                    gameNode.content.title,
+                    fontName: "HelveticaNeue-Medium",
+                    fontSize: GameNodeVisualMetrics.titleFontSize,
+                    fallback: "Untitled"
+                )
+
+            let timeWidth =
+                captionLineWidth(
+                    gameNode.time.displayClockString,
+                    fontName: "HelveticaNeue",
+                    fontSize: GameNodeVisualMetrics.timeFontSize,
+                    fallback: ""
+                )
+
+            widestTextWidth =
+                max(
+                    titleWidth,
+                    timeWidth
+                )
+        }
+
+        let requestedRightEdge =
+            GameNodeVisualMetrics.captionTextX
+            + widestTextWidth
+            + GameNodeVisualMetrics.captionRightPadding
+
+        let requestedWidth =
+            requestedRightEdge
+            - GameNodeMarkerChrome.bodyMinX
+
+        return GameNodeMarkerChrome.clampedBodyWidth(
+            requestedWidth
+        )
+    }
+
+
+    func captionLineWidth(
+        _ rawText: String,
+        fontName: String,
+        fontSize: CGFloat,
+        fallback: String
+    ) -> CGFloat {
+
+        let fittedText =
+            fittedCaptionText(
+                rawText,
+                fontName: fontName,
+                fontSize: fontSize,
+                fallback: fallback
+            )
+
+        let font =
+            UIFont(
+                name: fontName,
+                size: fontSize
+            )
+            ??
+            UIFont.systemFont(
+                ofSize: fontSize
+            )
+
+        return min(
+            GameNodeVisualMetrics.captionMaximumTextWidth,
+            textWidth(
+                fittedText,
+                font: font
+            )
+        )
+    }
+
+
+    /// Builds the text inside the shared white callout. Most node kinds use
+    /// the familiar two-line title + map-time presentation. Post nodes are
+    /// intentionally social-first and use the post snapshot instead:
+    /// poster name, subject, then the post's created-at time.
     func makeCaptionNode(
+        for gameNode: GameMapNode
+    ) -> SKNode {
+
+        if case let .post(content) = gameNode.content,
+           let snapshot = content.snapshot
+        {
+            return makePostCaptionNode(
+                snapshot: snapshot
+            )
+        }
+
+        return makeStandardCaptionNode(
+            title: gameNode.content.title,
+            time: gameNode.time.displayClockString
+        )
+    }
+
+
+    func makeStandardCaptionNode(
         title: String,
         time: String
     ) -> SKNode {
@@ -459,245 +578,219 @@ private extension GameNodeRenderer {
         root.name =
             "nodeCaption"
 
-        root.position =
-            CGPoint(
-                x: 0,
-                y: GameNodeVisualMetrics.captionTopYOffset
-            )
-
         root.zPosition =
-            5
+            8
 
-
-        // =============================================
-        // Title
-        // =============================================
-
-        let titleLabel =
-            SKLabelNode(
-                fontNamed:
-                    "HelveticaNeue-Medium"
-            )
-
-        titleLabel.name =
-            "nodeTitle"
-
-        titleLabel.fontSize =
-            GameNodeVisualMetrics.titleFontSize
-
-        titleLabel.text =
-            fittedCaptionTitle(
-                title
-            )
-
-        titleLabel.fontColor =
-            MapVisualTheme.nodeCaptionTitleColor
-
-        titleLabel.horizontalAlignmentMode =
-            .center
-
-        titleLabel.verticalAlignmentMode =
-            .center
-
-        titleLabel.numberOfLines =
-            1
-
-        titleLabel.lineBreakMode =
-            .byTruncatingTail
-
-        titleLabel.preferredMaxLayoutWidth =
-            GameNodeVisualMetrics.captionMaximumTextWidth
-
-
-        // =============================================
-        // Time
-        // =============================================
-
-        let timeLabel =
-            SKLabelNode(
-                fontNamed:
-                    "HelveticaNeue-Medium"
-            )
-
-        timeLabel.name =
-            "nodeTime"
-
-        timeLabel.text =
-            time
-
-        timeLabel.fontSize =
-            GameNodeVisualMetrics.timeFontSize
-
-        timeLabel.fontColor =
-            MapVisualTheme.nodeCaptionTimeColor
-
-        timeLabel.horizontalAlignmentMode =
-            .center
-
-        timeLabel.verticalAlignmentMode =
-            .center
-
-
-        // =============================================
-        // Plate sizing
-        // =============================================
-
-        let titleHeight =
-            max(
-                titleLabel.frame.height,
-                GameNodeVisualMetrics.titleFontSize
-            )
-
-        let timeHeight =
-            max(
-                timeLabel.frame.height,
-                GameNodeVisualMetrics.timeFontSize
-            )
-
-        let contentWidth =
-            min(
-                max(
-                    titleLabel.frame.width,
-                    timeLabel.frame.width
+        root.addChild(
+            makeCaptionLabel(
+                name: "nodeTitle",
+                text: fittedCaptionText(
+                    title,
+                    fontName: "HelveticaNeue-Medium",
+                    fontSize: GameNodeVisualMetrics.titleFontSize,
+                    fallback: "Untitled"
                 ),
-                GameNodeVisualMetrics.captionMaximumTextWidth
+                fontName: "HelveticaNeue-Medium",
+                fontSize: GameNodeVisualMetrics.titleFontSize,
+                color: MapVisualTheme.nodeCaptionTitleColor,
+                y: GameNodeVisualMetrics.titleCenterY
             )
-
-        let plateWidth =
-            max(
-                GameNodeVisualMetrics.captionMinimumWidth,
-                contentWidth
-                + (
-                    GameNodeVisualMetrics.captionHorizontalPadding
-                    * 2
-                )
-            )
-
-        let plateHeight =
-            GameNodeVisualMetrics.captionVerticalPadding
-            + titleHeight
-            + GameNodeVisualMetrics.captionLineSpacing
-            + timeHeight
-            + GameNodeVisualMetrics.captionVerticalPadding
-
-        let plateRect =
-            CGRect(
-                x: -plateWidth / 2,
-                y: -plateHeight,
-                width: plateWidth,
-                height: plateHeight
-            )
-
-
-        // =============================================
-        // Shadow
-        // =============================================
-
-        let shadowRect =
-            plateRect
-                .offsetBy(
-                    dx: GameNodeVisualMetrics.captionShadowOffset.x,
-                    dy: GameNodeVisualMetrics.captionShadowOffset.y
-                )
-
-        let shadow =
-            SKShapeNode(
-                rect: shadowRect,
-                cornerRadius:
-                    GameNodeVisualMetrics.captionCornerRadius
-            )
-
-        shadow.name =
-            "nodeCaptionShadow"
-
-        shadow.fillColor =
-            MapVisualTheme.nodeCaptionShadowColor
-
-        shadow.strokeColor =
-            .clear
-
-        shadow.zPosition =
-            -2
-
-        root.addChild(
-            shadow
-        )
-
-
-        // =============================================
-        // Rounded background plate
-        // =============================================
-
-        let background =
-            SKShapeNode(
-                rect: plateRect,
-                cornerRadius:
-                    GameNodeVisualMetrics.captionCornerRadius
-            )
-
-        background.name =
-            "nodeCaptionBackground"
-
-        background.fillColor =
-            MapVisualTheme.nodeCaptionBackgroundColor
-
-        background.strokeColor =
-            MapVisualTheme.nodeCaptionBorderColor
-
-        background.lineWidth =
-            GameNodeVisualMetrics.captionBorderWidth
-
-        background.zPosition =
-            -1
-
-        root.addChild(
-            background
-        )
-
-
-        // =============================================
-        // Label positions
-        // =============================================
-
-        let titleCenterY =
-            -GameNodeVisualMetrics.captionVerticalPadding
-            - (titleHeight / 2)
-
-        titleLabel.position =
-            CGPoint(
-                x: 0,
-                y: titleCenterY
-            )
-
-        let timeCenterY =
-            titleCenterY
-            - (titleHeight / 2)
-            - GameNodeVisualMetrics.captionLineSpacing
-            - (timeHeight / 2)
-
-        timeLabel.position =
-            CGPoint(
-                x: 0,
-                y: timeCenterY
-            )
-
-        titleLabel.zPosition =
-            1
-
-        timeLabel.zPosition =
-            1
-
-        root.addChild(
-            titleLabel
         )
 
         root.addChild(
-            timeLabel
+            makeCaptionLabel(
+                name: "nodeTime",
+                text: time,
+                fontName: "HelveticaNeue",
+                fontSize: GameNodeVisualMetrics.timeFontSize,
+                color: MapVisualTheme.nodeCaptionTimeColor,
+                y: GameNodeVisualMetrics.timeCenterY
+            )
         )
 
         return root
     }
 
+
+    func makePostCaptionNode(
+        snapshot: PostNodeSnapshot
+    ) -> SKNode {
+
+        let root =
+            SKNode()
+
+        root.name =
+            "nodeCaption.post"
+
+        root.zPosition =
+            8
+
+        let posterName =
+            fittedCaptionText(
+                snapshot.posterName,
+                fontName: "HelveticaNeue-Bold",
+                fontSize: GameNodeVisualMetrics.postPosterFontSize,
+                fallback: "Unknown User"
+            )
+
+        let subject =
+            fittedCaptionText(
+                snapshot.subject,
+                fontName: "HelveticaNeue-Medium",
+                fontSize: GameNodeVisualMetrics.postSubjectFontSize,
+                fallback: snapshot.preferredTitle
+            )
+
+        let createdAt =
+            fittedCaptionText(
+                displayPostCreatedAt(
+                    snapshot.createdAt
+                ),
+                fontName: "HelveticaNeue",
+                fontSize: GameNodeVisualMetrics.postCreatedAtFontSize,
+                fallback: "Time unavailable"
+            )
+
+        root.addChild(
+            makeCaptionLabel(
+                name: "postPosterName",
+                text: posterName,
+                fontName: "HelveticaNeue-Bold",
+                fontSize: GameNodeVisualMetrics.postPosterFontSize,
+                color: MapVisualTheme.nodeCaptionTitleColor,
+                y: GameNodeVisualMetrics.postPosterCenterY
+            )
+        )
+
+        root.addChild(
+            makeCaptionLabel(
+                name: "postSubject",
+                text: subject,
+                fontName: "HelveticaNeue-Medium",
+                fontSize: GameNodeVisualMetrics.postSubjectFontSize,
+                color: MapVisualTheme.nodeCaptionTitleColor,
+                y: GameNodeVisualMetrics.postSubjectCenterY
+            )
+        )
+
+        root.addChild(
+            makeCaptionLabel(
+                name: "postCreatedAt",
+                text: createdAt,
+                fontName: "HelveticaNeue",
+                fontSize: GameNodeVisualMetrics.postCreatedAtFontSize,
+                color: MapVisualTheme.nodeCaptionTimeColor,
+                y: GameNodeVisualMetrics.postCreatedAtCenterY
+            )
+        )
+
+        return root
+    }
+
+
+    func makeCaptionLabel(
+        name: String,
+        text: String,
+        fontName: String,
+        fontSize: CGFloat,
+        color: UIColor,
+        y: CGFloat
+    ) -> SKLabelNode {
+
+        let label =
+            SKLabelNode(
+                fontNamed: fontName
+            )
+
+        label.name =
+            name
+
+        label.text =
+            text
+
+        label.fontSize =
+            fontSize
+
+        label.fontColor =
+            color
+
+        label.horizontalAlignmentMode =
+            .left
+
+        label.verticalAlignmentMode =
+            .center
+
+        label.numberOfLines =
+            1
+
+        label.lineBreakMode =
+            .byTruncatingTail
+
+        label.preferredMaxLayoutWidth =
+            GameNodeVisualMetrics.captionMaximumTextWidth
+
+        label.position =
+            CGPoint(
+                x: GameNodeVisualMetrics.captionTextX,
+                y: y
+            )
+
+        return label
+    }
+
+
+    func displayPostCreatedAt(
+        _ rawValue: String
+    ) -> String {
+
+        let cleaned =
+            rawValue.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+        guard !cleaned.isEmpty else {
+            return "Time unavailable"
+        }
+
+        let isoFormatter =
+            ISO8601DateFormatter()
+
+        var parsedDate =
+            isoFormatter.date(
+                from: cleaned
+            )
+
+        if parsedDate == nil {
+            isoFormatter.formatOptions = [
+                .withInternetDateTime,
+                .withFractionalSeconds
+            ]
+
+            parsedDate =
+                isoFormatter.date(
+                    from: cleaned
+                )
+        }
+
+        guard let date = parsedDate else {
+            return "Time unavailable"
+        }
+
+        let formatter =
+            DateFormatter()
+
+        // Post callouts show only the created-at clock time so the
+        // third line matches the time-only format used by other node kinds.
+        formatter.dateStyle =
+            .none
+
+        formatter.timeStyle =
+            .short
+
+        return formatter.string(
+            from: date
+        )
+    }
 }
 
 
@@ -708,55 +801,56 @@ private extension GameNodeRenderer {
 private extension GameNodeRenderer {
 
     /// SpriteKit's `preferredMaxLayoutWidth` is not a reliable hard width
-    /// constraint for a single-line `SKLabelNode`. Measure the title using
-    /// the same UIKit font and shorten it before rendering instead.
-    ///
-    /// This keeps every GameNodeContent title inside the caption plate, even
-    /// for unusually long activity, user, post, media, or hyperlink titles.
-    func fittedCaptionTitle(
-        _ rawTitle: String
+    /// constraint for a single-line `SKLabelNode`. Measure using the same
+    /// UIKit font and shorten before rendering. This is shared by standard
+    /// node titles and all three Post callout lines.
+    func fittedCaptionText(
+        _ rawText: String,
+        fontName: String,
+        fontSize: CGFloat,
+        fallback: String
     ) -> String {
 
         let cleaned =
-            rawTitle
-                .trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                )
+            rawText.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
 
-        let title =
+        let fallbackCleaned =
+            fallback.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+        let text =
             cleaned.isEmpty
-            ? "Untitled"
+            ? (fallbackCleaned.isEmpty ? "Untitled" : fallbackCleaned)
             : cleaned
 
         let font =
             UIFont(
-                name: "HelveticaNeue-Medium",
-                size: GameNodeVisualMetrics.titleFontSize
+                name: fontName,
+                size: fontSize
             )
             ??
             UIFont.systemFont(
-                ofSize: GameNodeVisualMetrics.titleFontSize,
-                weight: .medium
+                ofSize: fontSize
             )
 
         let maximumWidth =
             GameNodeVisualMetrics.captionMaximumTextWidth
 
         guard textWidth(
-            title,
+            text,
             font: font
         ) > maximumWidth else {
-
-            return title
+            return text
         }
 
         let ellipsis =
             "…"
 
         let characters =
-            Array(
-                title
-            )
+            Array(text)
 
         var lowerBound =
             0
@@ -764,17 +858,10 @@ private extension GameNodeRenderer {
         var upperBound =
             characters.count
 
-        // Find the greatest prefix that still fits once the ellipsis is
-        // appended. Binary search avoids repeatedly walking a long title.
         while lowerBound < upperBound {
 
             let candidateCount =
-                (
-                    lowerBound
-                    + upperBound
-                    + 1
-                )
-                / 2
+                (lowerBound + upperBound + 1) / 2
 
             let prefix =
                 String(
@@ -787,22 +874,17 @@ private extension GameNodeRenderer {
                 )
 
             let candidate =
-                prefix
-                + ellipsis
+                prefix + ellipsis
 
             if textWidth(
                 candidate,
                 font: font
             ) <= maximumWidth {
-
                 lowerBound =
                     candidateCount
-
             } else {
-
                 upperBound =
-                    candidateCount
-                    - 1
+                    candidateCount - 1
             }
         }
 
@@ -853,10 +935,39 @@ private extension GameNodeRenderer {
         sprite: SKSpriteNode
     ) {
 
+        // Post markers are intentionally person-first: when a real Post
+        // snapshot exists, the circular image always represents the poster
+        // rather than the post's attached media. If the poster has no usable
+        // image URL, retain the Post placeholder instead of substituting post
+        // media. Legacy Post nodes without a snapshot still fall back to the
+        // generic content.image behavior below.
+        if case let .post(content) = gameNode.content,
+           let snapshot = content.snapshot
+        {
+            let posterImageURL =
+                snapshot.posterImageURL.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+            guard
+                !posterImageURL.isEmpty,
+                posterImageURL.lowercased() != "none"
+            else {
+                return
+            }
+
+            loadRemoteImage(
+                urlString: posterImageURL,
+                nodeID: gameNode.id,
+                sprite: sprite
+            )
+
+            return
+        }
+
         // The marker already contains a type-specific raster placeholder.
         // Missing images, invalid images, failed network requests, and old
         // SF-symbol data all intentionally keep that placeholder.
-
         guard let image =
             gameNode.content.image
         else {
@@ -1147,9 +1258,8 @@ private extension GameNodeRenderer {
         let sourceSize =
             texture.size()
 
-        let diameter =
-            GameNodeVisualMetrics.markerImageRadius
-            * 2
+        let targetSize =
+            GameNodeVisualMetrics.markerImageSize
 
         guard
             sourceSize.width > 0,
@@ -1158,8 +1268,8 @@ private extension GameNodeRenderer {
 
             sprite.size =
                 CGSize(
-                    width: diameter,
-                    height: diameter
+                    width: targetSize.width,
+                    height: targetSize.height
                 )
 
             return
@@ -1168,8 +1278,8 @@ private extension GameNodeRenderer {
         // Aspect-fill the circular crop without distorting the source image.
         let scale =
             max(
-                diameter / sourceSize.width,
-                diameter / sourceSize.height
+                targetSize.width / sourceSize.width,
+                targetSize.height / sourceSize.height
             )
 
         sprite.size =

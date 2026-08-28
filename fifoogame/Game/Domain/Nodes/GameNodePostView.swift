@@ -146,7 +146,7 @@ struct GameNodePostView: View {
                             "exclamationmark.bubble",
                         description:
                             Text(
-                                "This map node does not contain Post content."
+                                "This map stop does not contain Post content."
                             )
                     )
                 }
@@ -328,7 +328,7 @@ private extension GameNodePostView {
 
 
                 Text(
-                    "This older Post node does not yet contain a Post profile snapshot. Refresh the node from the current Post model to show its full details."
+                    "This older Post stop does not yet contain a Post profile snapshot. Refresh the stop from the current Post model to show its full details."
                 )
                 .font(
                     .callout

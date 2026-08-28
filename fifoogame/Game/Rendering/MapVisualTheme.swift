@@ -2,7 +2,7 @@
 //  MapVisualTheme.swift
 //  fifoogame
 //
-//  Created by Daudi Sagala on 8/23/26.
+//  Created by Daudi Sagala on 8/25/26.
 //
 
 
@@ -13,7 +13,167 @@ import SpriteKit
 enum MapVisualTheme {
 
     // =====================================================
-    // MARK: - Step 3 Cartesian Map
+    // MARK: - Tile Day Map
+    // =====================================================
+
+    /// Continuous background behind the square day cards. Roads are no
+    /// longer visible in the redesigned UI.
+    static let tileMapBackgroundColor =
+        SKColor(
+            red: 24 / 255,
+            green: 34 / 255,
+            blue: 46 / 255,
+            alpha: 1
+        )
+
+
+    static let tileHiddenFillColor =
+        SKColor(
+            red: 45 / 255,
+            green: 59 / 255,
+            blue: 76 / 255,
+            alpha: 1
+        )
+
+
+    static let tileHiddenBorderColor =
+        SKColor(
+            red: 92 / 255,
+            green: 111 / 255,
+            blue: 132 / 255,
+            alpha: 0.52
+        )
+
+
+    static let tileHiddenInnerBorderColor =
+        SKColor(
+            white: 1,
+            alpha: 0.035
+        )
+
+
+    static let tileRevealedFillColor =
+        SKColor(
+            red: 67 / 255,
+            green: 87 / 255,
+            blue: 111 / 255,
+            alpha: 1
+        )
+
+
+    static let tileRevealedBorderColor =
+        SKColor(
+            red: 138 / 255,
+            green: 158 / 255,
+            blue: 179 / 255,
+            alpha: 0.78
+        )
+
+
+    static let tileRevealedInnerBorderColor =
+        SKColor(
+            white: 1,
+            alpha: 0.08
+        )
+
+
+    static let tileShadowColor =
+        SKColor(
+            red: 0,
+            green: 0,
+            blue: 0,
+            alpha: 0.28
+        )
+
+
+    static let tilePrimaryTextColor =
+        SKColor(
+            red: 245 / 255,
+            green: 248 / 255,
+            blue: 251 / 255,
+            alpha: 1
+        )
+
+
+    static let tileSecondaryTextColor =
+        SKColor(
+            red: 201 / 255,
+            green: 213 / 255,
+            blue: 225 / 255,
+            alpha: 0.82
+        )
+
+
+    static let tileHiddenTextColor =
+        SKColor(
+            red: 166 / 255,
+            green: 182 / 255,
+            blue: 198 / 255,
+            alpha: 0.42
+        )
+
+
+    static let tileHiddenSecondaryTextColor =
+        SKColor(
+            red: 151 / 255,
+            green: 168 / 255,
+            blue: 184 / 255,
+            alpha: 0.45
+        )
+
+
+    static let tileRouteLabelColor =
+        SKColor(
+            red: 229 / 255,
+            green: 237 / 255,
+            blue: 245 / 255,
+            alpha: 0.66
+        )
+
+
+    /// Neutral center motif used by route-only cards. Route-specific styling
+    /// recolors this glyph at render time.
+    static let tileRouteGlyphColor =
+        SKColor(
+            red: 190 / 255,
+            green: 205 / 255,
+            blue: 219 / 255,
+            alpha: 0.48
+        )
+
+
+    static let tileSelectionColor =
+        SKColor(
+            white: 1,
+            alpha: 0.82
+        )
+
+
+    static let tileArtworkBorderColor =
+        SKColor(
+            white: 1,
+            alpha: 0.18
+        )
+
+
+    static let tileCollisionBadgeColor =
+        SKColor(
+            red: 20 / 255,
+            green: 28 / 255,
+            blue: 39 / 255,
+            alpha: 0.90
+        )
+
+
+    static let tileCollisionBadgeBorderColor =
+        SKColor(
+            white: 1,
+            alpha: 0.28
+        )
+
+
+    // =====================================================
+    // MARK: - Step 3 Cartesian Map (legacy compatibility)
     // =====================================================
 
     /// The entire scene background is the continuous road surface.
@@ -223,49 +383,47 @@ enum MapVisualTheme {
         )
 
 
-    /// Opaque-enough dark plate behind the node title/time so the caption
-    /// remains readable over roads, route strokes, and land islands.
+    /// Bright callout styling used by map nodes. The white capsule is
+    /// intentionally close to native map/location-sharing UI and keeps the
+    /// avatar + title/time readable over the darker game map.
     static let nodeCaptionBackgroundColor =
         SKColor(
-            red: 17 / 255,
-            green: 26 / 255,
-            blue: 36 / 255,
-            alpha: 0.90
+            white: 1,
+            alpha: 0.98
         )
 
-    static let nodeCaptionBorderColor =
-    SKColor(
-        red: 17 / 255,
-        green: 26 / 255,
-        blue: 36 / 255,
-        alpha: 0.90
-    )
 
-    
-    //MARK: todo style tes
+    static let nodeCaptionBorderColor =
+        SKColor(
+            white: 0.84,
+            alpha: 1
+        )
+
+
     static let nodeCaptionShadowColor =
         SKColor(
             red: 0,
             green: 0,
             blue: 0,
-            alpha: 0.10
+            alpha: 0.16
         )
 
 
     static let nodeCaptionTitleColor =
         SKColor(
-            red: 247 / 255,
-            green: 250 / 255,
-            blue: 252 / 255,
+            red: 18 / 255,
+            green: 18 / 255,
+            blue: 20 / 255,
             alpha: 1
         )
 
 
     static let nodeCaptionTimeColor =
         SKColor(
-            red: 214 / 255,
-            green: 225 / 255,
-            blue: 236 / 255,
-            alpha: 0.88
+            red: 78 / 255,
+            green: 78 / 255,
+            blue: 84 / 255,
+            alpha: 0.92
         )
+
 }
