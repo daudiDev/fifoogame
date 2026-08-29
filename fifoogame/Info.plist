@@ -7,8 +7,26 @@
 		<string>chewy.ttf</string>
 	</array>
 	<key>CLOUDINARY_CLOUD_NAME</key>
-	<string></string>
+	<string>dgowl1p3x</string>
 	<key>CLOUDINARY_UNSIGNED_UPLOAD_PRESET</key>
-	<string></string>
+	<string>fifoo_app</string>
+	<key>FIFOO_BACKEND_URL</key>
+	<string>http://172.20.10.2:3000</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>ai.fifoo.authentication</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fifoo</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

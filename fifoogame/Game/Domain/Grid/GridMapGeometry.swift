@@ -22,7 +22,7 @@ import CoreGraphics
 /// A cell sits to the RIGHT and DOWN of its `(column, row)` street
 /// intersection. Columns may be negative so the map can continue into
 /// negative progress. Rows are rendered only inside the 24-hour day.
-struct GridCellID: Hashable, Sendable {
+nonisolated struct GridCellID: Hashable, Sendable {
 
     let column: Int
     let row: Int

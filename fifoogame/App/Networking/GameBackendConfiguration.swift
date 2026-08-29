@@ -2,11 +2,10 @@
 //  GameBackendConfiguration.swift
 //  fifoogame
 //
-//  Step 2: Socket.IO client/backend contract configuration.
+//  Backend/authentication configuration.
 //
 
 import Foundation
-
 
 nonisolated struct GameBackendConfiguration:
     Equatable,
@@ -19,7 +18,6 @@ nonisolated struct GameBackendConfiguration:
     let isEnabled: Bool
     let ackTimeout: TimeInterval
 
-
     init(
         serverURL: URL,
         userID: String,
@@ -28,7 +26,6 @@ nonisolated struct GameBackendConfiguration:
         isEnabled: Bool = true,
         ackTimeout: TimeInterval = 10
     ) {
-
         self.serverURL = serverURL
         self.userID = userID
         self.authToken = authToken
@@ -38,28 +35,58 @@ nonisolated struct GameBackendConfiguration:
     }
 }
 
-
 extension GameBackendConfiguration {
 
-    /// Safe default while the Node.js server has not been created yet.
-    /// Replace the URL/user/token values when the real server is available,
-    /// then set `isEnabled` to true.
-    static let developmentPlaceholder =
+    /// REST auth and Socket.IO share the same backend origin.
+    static var authenticationServerURL: URL {
+        #if DEBUG
+        return URL(string: "http://172.20.10.2:3000")!
+        #else
+        if let value = Bundle.main.object(forInfoDictionaryKey: "FIFOO_BACKEND_URL") as? String,
+           let url = URL(string: value),
+           !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return url
+        }
+        return URL(string: "https://invalid.invalid")!
+        #endif
+    }
+
+    static func authenticated(
+        serverURL: URL = authenticationServerURL,
+        userID: String,
+        authToken: String,
+        deviceID: String
+    ) -> GameBackendConfiguration {
         GameBackendConfiguration(
-            serverURL:
-                URL(
-                    string:
-                        "https://YOUR-FIFOO-SERVER.example.com"
-                )!,
-            userID:
-                "DUMMY_USER_ID",
-            authToken:
-                "DUMMY_AUTH_TOKEN",
-            deviceID:
-                "DUMMY_IOS_DEVICE_ID",
-            isEnabled:
-                false,
-            ackTimeout:
-                10
+            serverURL: serverURL,
+            userID: userID,
+            authToken: authToken,
+            deviceID: deviceID,
+            isEnabled: true,
+            ackTimeout: 10
+        )
+    }
+
+    #if DEBUG
+    /// Explicit legacy fallback for backend integration debugging only.
+    static let localDevelopment =
+        GameBackendConfiguration(
+            serverURL: authenticationServerURL,
+            userID: "DUMMY_USER_ID",
+            authToken: "DUMMY_AUTH_TOKEN",
+            deviceID: "DUMMY_IOS_DEVICE_ID",
+            isEnabled: true,
+            ackTimeout: 10
+        )
+    #endif
+
+    static let productionPlaceholder =
+        GameBackendConfiguration(
+            serverURL: authenticationServerURL,
+            userID: "",
+            authToken: "",
+            deviceID: "",
+            isEnabled: false,
+            ackTimeout: 10
         )
 }

@@ -13,6 +13,16 @@ import SwiftUI
 struct Workout: Identifiable, Codable, Hashable {
     
     let id: UUID
+
+    /// Stable catalog/source identifier for the workout selected inside an
+    /// ActivityWorkout node. This is optional so sessions persisted before
+    /// Pass 5.49 continue to decode unchanged.
+    var sourceWorkoutID: String?
+
+    /// Day Map ActivityWorkout node that owns this play session. Using the
+    /// node identity makes the session stable across app launches and keeps
+    /// two occurrences of the same workout independent.
+    var sourceActivityNodeID: UUID?
     
     var name: String
     var description: String?
@@ -52,6 +62,8 @@ struct Workout: Identifiable, Codable, Hashable {
     
     init(
         id: UUID = UUID(),
+        sourceWorkoutID: String? = nil,
+        sourceActivityNodeID: UUID? = nil,
         name: String,
         description: String? = nil,
         exercises: [WorkoutExercise],
@@ -70,6 +82,8 @@ struct Workout: Identifiable, Codable, Hashable {
         updatedAt: Date = .now
     ) {
         self.id = id
+        self.sourceWorkoutID = sourceWorkoutID
+        self.sourceActivityNodeID = sourceActivityNodeID
         self.name = name
         self.description = description
         self.exercises = exercises

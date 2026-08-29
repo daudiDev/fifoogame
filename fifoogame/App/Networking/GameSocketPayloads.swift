@@ -137,6 +137,98 @@ nonisolated struct GameActivityMutationPayload:
 }
 
 
+nonisolated struct GameTileCellPayload:
+    Codable,
+    Equatable,
+    Hashable,
+    Sendable {
+
+    let column: Int
+    let row: Int
+
+
+    init(cellID: GridCellID) {
+
+        column = cellID.column
+        row = cellID.row
+    }
+
+
+    var domainValue: GridCellID {
+
+        GridCellID(
+            column: column,
+            row: row
+        )
+    }
+}
+
+
+nonisolated struct GameTileRevealMutationPayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    let cell: GameTileCellPayload
+    let nodeID: GameNodeID?
+    let isRevealed: Bool
+}
+
+
+nonisolated struct GameTileRevealServerPayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    let cell: GameTileCellPayload
+    let isRevealed: Bool
+    let revision: Int?
+}
+
+
+nonisolated enum GameSuggestedStopDecision:
+    String,
+    Codable,
+    Sendable {
+
+    case accepted
+    case rejected
+}
+
+
+nonisolated struct GameSuggestedStopDecisionPayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    let cell: GameTileCellPayload
+    let decision: GameSuggestedStopDecision
+}
+
+
+nonisolated struct GameSuggestedStopDecisionServerPayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    let cell: GameTileCellPayload
+    let decision: GameSuggestedStopDecision
+}
+
+
+nonisolated struct GamePostReplyCreatePayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    let nodeID: GameNodeID
+    let postID: String
+    let parentReplyID: String?
+    let text: String
+    let createdAt: Date
+}
+
+
 nonisolated struct GamePostSavePayload:
     Codable,
     Equatable,
@@ -422,13 +514,69 @@ nonisolated struct GameFutureRoutePreviewPayload:
 }
 
 
+nonisolated struct GameBackendRouteNodeAnchorPayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    let nodeID: GameNodeID
+    let coordinate: MapCoordinate
+    let roadLocation: GameNodeRouteAnchor.RoadLocation
+
+
+    init(
+        anchor: GameNodeRouteAnchor
+    ) {
+
+        nodeID = anchor.nodeID
+        coordinate = anchor.nodeCoordinate
+        roadLocation = anchor.roadLocation
+    }
+}
+
+
+nonisolated struct GameBackendRouteBuildPayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    let roadGraph: RoadGraph
+    let nodeAnchors: [GameBackendRouteNodeAnchorPayload]
+    let currentDayTime: DayTime
+    let maxAlternatives: Int
+}
+
+
+nonisolated struct GameRouteAttachNodePayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    let node: GameMapNode
+    let roadGraph: RoadGraph
+    let nodeAnchors: [GameBackendRouteNodeAnchorPayload]
+
+    /// Explicit routing anchor for the node being attached.
+    ///
+    /// The general nodeAnchors collection is still supplied so the backend
+    /// can rebuild the whole path, but the attached stop must never depend on
+    /// observation timing or collection refresh in order to be identified.
+    let attachedNodeAnchor: GameBackendRouteNodeAnchorPayload?
+
+    let currentDayTime: DayTime
+    let completedRoute: GameCompletedRoutePayload
+    let maxAlternatives: Int
+}
+
+
 nonisolated struct GameRouteSelectionPayload:
     Codable,
     Equatable,
     Sendable {
 
     let selectedRouteID: RouteID
-    let routeState: GameDayRouteStatePayload
+    let completedRoute: GameCompletedRoutePayload
+    let currentDayTime: DayTime
 }
 
 
@@ -526,6 +674,19 @@ nonisolated struct GameSearchResultsPayload:
 // MARK: - Fifoo Play
 // =====================================================
 
+nonisolated struct GamePlayDataRequestPayload:
+    Codable,
+    Equatable,
+    Sendable {
+
+    /// Nil requests the user's most recently updated session. ActivityWorkout
+    /// nodes provide their stable node UUID so the backend can restore that
+    /// exact play session instead of whichever workout happened to be latest.
+    let workoutID: UUID?
+    let sourceWorkoutID: String?
+}
+
+
 nonisolated struct GameWorkoutMutationPayload:
     Codable,
     Equatable,
@@ -592,6 +753,8 @@ nonisolated struct GameDaySnapshotPayload:
     let revision: Int
     let nodes: [GameMapNode]
     let routeState: GameDayRouteStatePayload
+    let revealedTiles: [GameTileCellPayload]?
+    let suggestionDecisions: [GameSuggestedStopDecisionServerPayload]?
     let workout: Workout?
     let userDailyProgress: Double?
 }
@@ -609,10 +772,11 @@ nonisolated struct GameServerErrorPayload:
 
 
 // =====================================================
-// MARK: - In-memory Step 2 outbox
+// MARK: - Durable mutation outbox
 // =====================================================
 
 nonisolated struct GameQueuedSocketMutation:
+    Codable,
     Identifiable,
     Equatable,
     Sendable {
@@ -620,6 +784,7 @@ nonisolated struct GameQueuedSocketMutation:
     let id: UUID
     let event: String
     let requestID: UUID
+    let mapDate: String
     let encodedEnvelope: Data
     let queuedAt: Date
 }

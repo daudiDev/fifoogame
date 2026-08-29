@@ -54,6 +54,30 @@ struct GameNodeHyperlinkView: View {
 
         self.node = node
         self.onAction = onAction
+
+        let initialVote: HyperlinkLocalVote?
+
+        if case let .hyperlink(content) = node.content {
+            switch content.userVote?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() {
+            case "upvote":
+                initialVote = .upvote
+
+            case "downvote":
+                initialVote = .downvote
+
+            default:
+                initialVote = nil
+            }
+        } else {
+            initialVote = nil
+        }
+
+        _selectedVote =
+            State(
+                initialValue: initialVote
+            )
     }
 
 

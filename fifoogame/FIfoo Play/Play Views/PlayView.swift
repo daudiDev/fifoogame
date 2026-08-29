@@ -18,19 +18,27 @@ struct PlayView: View {
 
     /// ActivityWorkout integration. Generic Play entry points leave these nil,
     /// preserving the original Fifoo Play UI. Independent ActivityWorkout
-    /// stops provide an editable schedule and may browse guided classes from
-    /// the workout status overlay.
-    let scheduledWorkoutTime: String?
-    let onEditScheduledWorkoutTime: (() -> Void)?
+    /// stops expose their editable schedule/location on WorkoutStatusOverlay.
+    let scheduledWorkoutStartTime: String?
+    let scheduledWorkoutEndTime: String?
+    let scheduledWorkoutLocation: String?
+    let onUpdateScheduledWorkoutTimes: ((String, String) -> Void)?
+    let onUpdateScheduledWorkoutLocation: ((String) -> Void)?
     let onBrowseWorkoutClasses: (() -> Void)?
 
     init(
-        scheduledWorkoutTime: String? = nil,
-        onEditScheduledWorkoutTime: (() -> Void)? = nil,
+        scheduledWorkoutStartTime: String? = nil,
+        scheduledWorkoutEndTime: String? = nil,
+        scheduledWorkoutLocation: String? = nil,
+        onUpdateScheduledWorkoutTimes: ((String, String) -> Void)? = nil,
+        onUpdateScheduledWorkoutLocation: ((String) -> Void)? = nil,
         onBrowseWorkoutClasses: (() -> Void)? = nil
     ) {
-        self.scheduledWorkoutTime = scheduledWorkoutTime
-        self.onEditScheduledWorkoutTime = onEditScheduledWorkoutTime
+        self.scheduledWorkoutStartTime = scheduledWorkoutStartTime
+        self.scheduledWorkoutEndTime = scheduledWorkoutEndTime
+        self.scheduledWorkoutLocation = scheduledWorkoutLocation
+        self.onUpdateScheduledWorkoutTimes = onUpdateScheduledWorkoutTimes
+        self.onUpdateScheduledWorkoutLocation = onUpdateScheduledWorkoutLocation
         self.onBrowseWorkoutClasses = onBrowseWorkoutClasses
     }
 
@@ -109,12 +117,6 @@ struct PlayView: View {
                             pauseWorkoutForExit()
                             
                         },
-
-                        scheduledWorkoutTime:
-                            scheduledWorkoutTime,
-
-                        onEditScheduledWorkoutTime:
-                            onEditScheduledWorkoutTime,
                         
                         liveMessages: socketManager.liveMessages
                         
@@ -131,6 +133,16 @@ struct PlayView: View {
                         geometry: geometry,
                         showWorkoutStatusOverlay:
                             $showWorkoutStatusOverlay,
+                        scheduledWorkoutStartTime:
+                            scheduledWorkoutStartTime,
+                        scheduledWorkoutEndTime:
+                            scheduledWorkoutEndTime,
+                        scheduledWorkoutLocation:
+                            scheduledWorkoutLocation,
+                        onUpdateScheduledWorkoutTimes:
+                            onUpdateScheduledWorkoutTimes,
+                        onUpdateScheduledWorkoutLocation:
+                            onUpdateScheduledWorkoutLocation,
                         onBrowseWorkoutClasses:
                             onBrowseWorkoutClasses
                     )
@@ -221,6 +233,15 @@ struct PlayView: View {
                 from: oldStatus,
                 to: newStatus
             )
+        }
+
+        // MARK: Persisted Exercise Restoration
+
+        .onChange(
+            of: socketManager.workout.currentWorkoutExerciseID
+        ) { _, _ in
+
+            synchronizeRestoredWorkoutPosition()
         }
 
         // MARK: Status Overlay Closed
@@ -1060,11 +1081,58 @@ private extension PlayView {
             return
         }
 
-        autoPlaySecondsRemaining =
-            Int(
-                exercise.durationInSeconds
-                ?? socketManager.defaultWorkoutExerciseDuration
-            )
+        let totalDuration =
+            exercise.durationInSeconds
+            ?? socketManager.defaultWorkoutExerciseDuration
+
+        switch exercise.status {
+
+        case .completed,
+             .skipped:
+
+            autoPlaySecondsRemaining = 0
+
+        case .notStarted,
+             .active,
+             .paused:
+
+            let remaining =
+                max(
+                    0,
+                    totalDuration
+                    - exercise.activeElapsedTime()
+                )
+
+            autoPlaySecondsRemaining =
+                Int(ceil(remaining))
+        }
+    }
+
+
+    /// A targeted play-session request can arrive after PlayView has already
+    /// appeared with a fresh placeholder workout. Re-align the pager and timer
+    /// to the authoritative persisted current exercise as soon as that snapshot
+    /// replaces the placeholder.
+    func synchronizeRestoredWorkoutPosition() {
+
+        let restoredIndex =
+            initialExerciseIndex()
+
+        var transaction =
+            Transaction()
+
+        transaction.animation = nil
+        transaction.disablesAnimations = true
+
+        withTransaction(transaction) {
+            currentExerciseIndex =
+                restoredIndex
+
+            pageDragOffset = 0
+        }
+
+        initializeCountdownForCurrentExercise()
+        countdownGeneration += 1
     }
 }
 

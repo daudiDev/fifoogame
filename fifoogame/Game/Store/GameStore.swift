@@ -231,6 +231,13 @@ var debugRouteRenderStateOverride:
     private(set) var suggestedPathStopsByCell:
         [GridCellID: SuggestedPathStop] = [:]
 
+    /// Cells whose suggestion has already been accepted or rejected for the
+    /// currently loaded Day Map. Both decisions consume the suggestion so a
+    /// provider must not offer the same card again after reconnect/relaunch.
+    @Published
+    private(set) var consumedSuggestedPathStopCellIDs:
+        Set<GridCellID> = []
+
     /// Emitted only when the tapped empty path card has supplied suggestion
     /// content. DayMapView presents that content directly for review.
     @Published
@@ -526,6 +533,10 @@ var debugRouteRenderStateOverride:
         for cellID: GridCellID
     ) {
 
+        guard !consumedSuggestedPathStopCellIDs.contains(cellID) else {
+            return
+        }
+
         suggestedPathStopsByCell[cellID] =
             suggestion
     }
@@ -546,6 +557,42 @@ var debugRouteRenderStateOverride:
         suggestedPathStopsByCell.removeValue(
             forKey: cellID
         )
+    }
+
+
+    /// Marks a suggestion as consumed immediately for optimistic UI behavior.
+    /// The next authoritative snapshot replaces this set with server state.
+    func markSuggestedPathStopConsumed(
+        _ cellID: GridCellID
+    ) {
+
+        consumedSuggestedPathStopCellIDs.insert(cellID)
+        clearSuggestedPathStop(for: cellID)
+    }
+
+
+    /// Applies the authoritative accepted/rejected suggestion cells for the
+    /// currently selected Day Map. Any provider-supplied suggestion already
+    /// cached for one of these cells is removed immediately.
+    func replaceConsumedSuggestedPathStopCellsFromServer(
+        _ cellIDs: Set<GridCellID>
+    ) {
+
+        consumedSuggestedPathStopCellIDs = cellIDs
+
+        for cellID in cellIDs {
+            suggestedPathStopsByCell.removeValue(forKey: cellID)
+        }
+    }
+
+
+    /// Clears date-scoped suggestion state before loading another Day Map.
+    /// Suggestion providers can repopulate the new date after its snapshot.
+    func prepareSuggestedPathStopsForDayReload() {
+
+        suggestedPathStopsByCell.removeAll()
+        consumedSuggestedPathStopCellIDs.removeAll()
+        pendingSuggestedPathStopRequest = nil
     }
 
 
@@ -6918,6 +6965,32 @@ private extension GameStore {
 // =====================================================
 
 extension GameStore {
+
+    /// Replaces explicit discovery/reveal state from the authoritative day
+    /// snapshot. Route/user-created tiles may still resolve as revealed through
+    /// DayMapTile projection rules even when they are not present in this set.
+    func replaceRevealedTilesFromServer(
+        _ cellIDs: Set<GridCellID>
+    ) {
+
+        revealedTileIDs = cellIDs
+    }
+
+
+    /// Applies one cross-device reveal state update without disturbing other
+    /// revealed tiles.
+    func setTileRevealFromServer(
+        _ cellID: GridCellID,
+        isRevealed: Bool
+    ) {
+
+        if isRevealed {
+            revealedTileIDs.insert(cellID)
+        } else {
+            revealedTileIDs.remove(cellID)
+        }
+    }
+
 
     /// Replaces the current map node collection with the server snapshot while
     /// preserving the existing road graph as the local geometry source.

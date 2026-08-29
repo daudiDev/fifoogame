@@ -316,7 +316,7 @@ private extension GameNodePostView {
 
             HStack(spacing: 18) {
                 Label(
-                    "\(max(post.postResponseCount, allComments(post).count)) Comments",
+                    "\(visibleCommentCount(post)) Comments",
                     systemImage: "bubble.left"
                 )
 
@@ -369,7 +369,7 @@ private extension GameNodePostView {
         _ post: PostNodeSnapshot
     ) -> some View {
         let comments = allComments(post)
-        let displayedCount = max(post.postResponseCount + localReplies.count, comments.count)
+        let displayedCount = visibleCommentCount(post)
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -583,6 +583,21 @@ private extension GameNodePostView {
         _ post: PostNodeSnapshot
     ) -> [PostNodeCommentSnapshot] {
         (post.comments ?? []) + localReplies
+    }
+
+
+    func visibleCommentCount(
+        _ post: PostNodeSnapshot
+    ) -> Int {
+
+        let persistedVisibleCount =
+            max(
+                post.postResponseCount,
+                (post.comments ?? []).count
+            )
+
+        return persistedVisibleCount
+            + localReplies.count
     }
 
 

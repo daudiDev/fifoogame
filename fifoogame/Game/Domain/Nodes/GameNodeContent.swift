@@ -1594,5 +1594,11 @@ struct HyperlinkNodeContent:
 
     var image:
         GameNodeImage? = nil
+
+    /// Authoritative vote for the current Day Map user. The backend hydrates
+    /// this from `day_map_hyperlink_votes` when a Day Map snapshot is loaded.
+    /// Optional so previously persisted hyperlink nodes remain decodable.
+    var userVote:
+        String? = nil
 }
 

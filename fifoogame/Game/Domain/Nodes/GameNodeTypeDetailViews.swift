@@ -777,6 +777,172 @@ func activityWorkoutUpdatingIndependentSchedule(
 }
 
 
+/// Updates the editable Start/End pair shown on WorkoutStatusOverlay.
+/// The pair is normalized before persistence so PostgreSQL never receives an
+/// ActivityWorkout whose end precedes its start. If only one side crosses the
+/// other, the untouched side is moved by the previous schedule span (or the
+/// workout duration when no usable span exists).
+func activityWorkoutUpdatingIndependentSchedule(
+    _ originalNode: GameMapNode,
+    startTime: String,
+    endTime: String,
+    roadGraph: RoadGraph
+) -> GameMapNode {
+
+    var node = originalNode
+
+    guard case var .activity(content) = node.content,
+          var workout = content.workout,
+          workout.resolvedWorkoutType == .independent else {
+        return node
+    }
+
+    let originalStartText =
+        content.startTime.trimmingCharacters(in: .whitespacesAndNewlines)
+    let originalEndText =
+        content.endTime.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    let requestedStartText =
+        startTime.trimmingCharacters(in: .whitespacesAndNewlines)
+    let requestedEndText =
+        endTime.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    let startWasEdited =
+        !requestedStartText.isEmpty
+        && requestedStartText != originalStartText
+
+    let endWasEdited =
+        !requestedEndText.isEmpty
+        && requestedEndText != originalEndText
+
+    var resolvedStart =
+        activityWorkoutParseClockString(requestedStartText)
+        ?? activityWorkoutParseClockString(originalStartText)
+        ?? node.time
+
+    var resolvedEnd =
+        activityWorkoutParseClockString(requestedEndText)
+        ?? activityWorkoutParseClockString(originalEndText)
+
+    let preferredSpan =
+        activityWorkoutPreferredScheduleSpan(
+            startText: originalStartText,
+            endText: originalEndText,
+            workoutDurationInSeconds: workout.durationInSeconds
+        )
+
+    if resolvedEnd == nil {
+        resolvedEnd = DayTime(
+            secondsFromMidnight:
+                min(
+                    resolvedStart.secondsFromMidnight + preferredSpan,
+                    DayTime.secondsPerDay - 60
+                )
+        )
+    }
+
+    if let currentEnd = resolvedEnd,
+       currentEnd.secondsFromMidnight < resolvedStart.secondsFromMidnight {
+
+        if endWasEdited && !startWasEdited {
+            resolvedStart = DayTime(
+                secondsFromMidnight:
+                    max(
+                        0,
+                        currentEnd.secondsFromMidnight - preferredSpan
+                    )
+            )
+        } else {
+            resolvedEnd = DayTime(
+                secondsFromMidnight:
+                    min(
+                        resolvedStart.secondsFromMidnight + preferredSpan,
+                        DayTime.secondsPerDay - 60
+                    )
+            )
+        }
+    }
+
+    let finalEnd =
+        resolvedEnd
+        ?? DayTime(
+            secondsFromMidnight:
+                min(
+                    resolvedStart.secondsFromMidnight + preferredSpan,
+                    DayTime.secondsPerDay - 60
+                )
+        )
+
+    content.startTime =
+        resolvedStart.displayClockString
+    content.endTime =
+        finalEnd.displayClockString
+
+    workout.selectedWorkoutTime =
+        content.startTime
+
+    content.workout = workout
+    node.content = .activity(content)
+
+    activityWorkoutMoveNode(
+        &node,
+        to: resolvedStart,
+        roadGraph: roadGraph
+    )
+
+    return node
+}
+
+
+/// Updates the user-controlled location of an independent ActivityWorkout.
+/// Activity and Workout snapshots both carry location, so keep them identical
+/// before sending the authoritative `activityWorkoutUpdate` mutation.
+func activityWorkoutUpdatingIndependentLocation(
+    _ originalNode: GameMapNode,
+    to location: String
+) -> GameMapNode {
+
+    var node = originalNode
+
+    guard case var .activity(content) = node.content,
+          var workout = content.workout,
+          workout.resolvedWorkoutType == .independent else {
+        return node
+    }
+
+    let cleaned =
+        location.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    content.location = cleaned
+    workout.location = cleaned
+    content.workout = workout
+    node.content = .activity(content)
+
+    return node
+}
+
+
+private func activityWorkoutPreferredScheduleSpan(
+    startText: String,
+    endText: String,
+    workoutDurationInSeconds: Int
+) -> TimeInterval {
+
+    if let start = activityWorkoutParseClockString(startText),
+       let end = activityWorkoutParseClockString(endText),
+       end.secondsFromMidnight > start.secondsFromMidnight {
+
+        return end.secondsFromMidnight - start.secondsFromMidnight
+    }
+
+    if workoutDurationInSeconds > 0 {
+        return TimeInterval(workoutDurationInSeconds)
+    }
+
+    return 3_600
+}
+
+
 private func activityWorkoutMoveNode(
     _ node: inout GameMapNode,
     to time: DayTime,
@@ -970,6 +1136,12 @@ struct ActivityWorkoutClassExperienceView: View {
             isPresented: $isShowingFixedTimeAlert
         ) {
             Button("Browse Workouts") {
+                SocketManager.shared.activityWorkoutBrowseOpened(
+                    nodeID:
+                        draft.id,
+                    classesOnly:
+                        false
+                )
                 isShowingBrowseWorkouts = true
             }
             Button("Cancel", role: .cancel) { }
@@ -1064,6 +1236,10 @@ private extension ActivityWorkoutClassExperienceView {
 
     var fixedClassTimeRow: some View {
         Button {
+            SocketManager.shared.activityWorkoutClassTimeEditAttempted(
+                nodeID:
+                    draft.id
+            )
             isShowingFixedTimeAlert = true
         } label: {
             HStack(spacing: 12) {
@@ -1329,6 +1505,12 @@ private extension ActivityWorkoutClassExperienceView {
             .disabled(!state.isEnabled)
 
             Button {
+                SocketManager.shared.activityWorkoutBrowseOpened(
+                    nodeID:
+                        draft.id,
+                    classesOnly:
+                        false
+                )
                 isShowingBrowseWorkouts = true
             } label: {
                 VStack(spacing: 4) {
@@ -1884,11 +2066,15 @@ struct ActivityTaskExperienceView: View {
     let node: GameMapNode
     let roadGraph: RoadGraph
     let onUpdate: (GameMapNode) -> Void
+    let onDelete: () -> Void
     let onSkip: (GameMapNode) -> Void
     let onCompleted: (GameMapNode) -> Void
 
     @State private var draft: GameMapNode
     @State private var activeTimePicker: ActivityTaskTimePickerTarget?
+    @State private var isShowingTitleEditor = false
+    @State private var titleEditorText = ""
+    @State private var isShowingDeleteConfirmation = false
     @State private var isShowingSkipConfirmation = false
     @State private var isShowingDoneConfirmation = false
 
@@ -1899,12 +2085,14 @@ struct ActivityTaskExperienceView: View {
         node: GameMapNode,
         roadGraph: RoadGraph,
         onUpdate: @escaping (GameMapNode) -> Void,
+        onDelete: @escaping () -> Void,
         onSkip: @escaping (GameMapNode) -> Void,
         onCompleted: @escaping (GameMapNode) -> Void
     ) {
         self.node = node
         self.roadGraph = roadGraph
         self.onUpdate = onUpdate
+        self.onDelete = onDelete
         self.onSkip = onSkip
         self.onCompleted = onCompleted
         _draft = State(initialValue: Self.preloadedDraft(from: node))
@@ -1963,6 +2151,58 @@ struct ActivityTaskExperienceView: View {
             // presentations of the same item identity, so relying only on the
             // State initializer can leave stale/blank time fields.
             draft = Self.preloadedDraft(from: node)
+        }
+        .sheet(
+            isPresented: $isShowingTitleEditor
+        ) {
+            NavigationStack {
+                Form {
+                    Section("Task Title") {
+                        TextField(
+                            "Task title",
+                            text: $titleEditorText
+                        )
+                        .textInputAutocapitalization(.sentences)
+                    }
+                }
+                .navigationTitle("Edit Task Title")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            isShowingTitleEditor = false
+                        }
+                    }
+
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            commitTaskTitle()
+                        }
+                        .fontWeight(.semibold)
+                        .disabled(
+                            titleEditorText
+                                .trimmingCharacters(
+                                    in: .whitespacesAndNewlines
+                                )
+                                .isEmpty
+                        )
+                    }
+                }
+            }
+            .presentationDetents([.height(220)])
+        }
+        .confirmationDialog(
+            "Delete this task?",
+            isPresented: $isShowingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Task", role: .destructive) {
+                onDelete()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This permanently removes the task stop from this Day Map.")
         }
         .confirmationDialog(
             "Skip this task?",
@@ -2105,14 +2345,58 @@ private extension ActivityTaskExperienceView {
 
 
     var header: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Text(displayTitle)
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
 
-            Spacer()
+            Button {
+                titleEditorText = displayTitle
+                isShowingTitleEditor = true
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.subheadline.weight(.bold))
+                    .frame(width: 36, height: 36)
+                    .background(.black.opacity(0.30), in: Circle())
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Edit task title")
+
+            Spacer(minLength: 8)
+
+            Menu {
+                Button {
+                    titleEditorText = displayTitle
+                    isShowingTitleEditor = true
+                } label: {
+                    Label(
+                        "Edit Task Title",
+                        systemImage: "pencil"
+                    )
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    isShowingDeleteConfirmation = true
+                } label: {
+                    Label(
+                        "Delete Task",
+                        systemImage: "trash"
+                    )
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.headline.weight(.bold))
+                    .frame(width: 42, height: 42)
+                    .background(.black.opacity(0.30), in: Circle())
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Task options")
 
             Button {
                 persistDraft()
@@ -2367,6 +2651,8 @@ private extension ActivityTaskExperienceView {
                     Spacer()
 
                     Button("Done") {
+                        persistDraft()
+
                         withAnimation(.snappy(duration: 0.22)) {
                             activeTimePicker = nil
                         }
@@ -2430,6 +2716,7 @@ private extension ActivityTaskExperienceView {
 
                 if target == .start {
                     startTimeBinding.wrappedValue = time.displayClockString
+                    keepEndTimeAfterStartTime()
                 } else {
                     endTimeBinding.wrappedValue = time.displayClockString
                 }
@@ -2499,6 +2786,69 @@ private extension ActivityTaskExperienceView {
     }
 
 
+    func commitTaskTitle() {
+        let cleaned =
+            titleEditorText
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+        guard !cleaned.isEmpty else {
+            return
+        }
+
+        updateActivityContent { content in
+            // ActivityTask carries the title in two places for compatibility:
+            // the parent Activity and the nested Task snapshot. Keep them in
+            // lockstep so server round-trips cannot restore a stale title.
+            content.title = cleaned
+
+            if var task = content.task {
+                task.title = cleaned
+                content.task = task
+            }
+        }
+
+        titleEditorText = cleaned
+        isShowingTitleEditor = false
+
+        // Save immediately instead of waiting for the full-screen view to close.
+        persistDraft()
+    }
+
+
+    func keepEndTimeAfterStartTime() {
+        guard let start = parseClockString(startTimeBinding.wrappedValue) else {
+            return
+        }
+
+        let currentEnd = parseClockString(endTimeBinding.wrappedValue)
+
+        if let currentEnd,
+           currentEnd.secondsFromMidnight > start.secondsFromMidnight {
+            return
+        }
+
+        let correctedEnd =
+            DayTime(
+                secondsFromMidnight:
+                    min(
+                        start.secondsFromMidnight + 3_600,
+                        DayTime.secondsPerDay - 60
+                    )
+            )
+
+        endTimeBinding.wrappedValue =
+            correctedEnd.displayClockString
+    }
+
+
+    func normalizeTaskScheduleBeforePersisting() {
+        keepEndTimeAfterStartTime()
+        synchronizeNodeTimeFromStartTime()
+    }
+
+
     func updateActivityContent(
         _ mutation: (inout ActivityNodeContent) -> Void
     ) {
@@ -2512,7 +2862,7 @@ private extension ActivityTaskExperienceView {
 
 
     func persistDraft() {
-        synchronizeNodeTimeFromStartTime()
+        normalizeTaskScheduleBeforePersisting()
         onUpdate(draft)
     }
 
@@ -2523,7 +2873,7 @@ private extension ActivityTaskExperienceView {
         updateActivityContent { content in
             content.status = action.statusValue ?? content.status
         }
-        synchronizeNodeTimeFromStartTime()
+        normalizeTaskScheduleBeforePersisting()
 
         switch action {
         case .skip:

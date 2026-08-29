@@ -21,14 +21,45 @@ nonisolated enum GameSocketOutgoingEvent:
     case nodeAdd = "game:node:add"
     case nodeUpdate = "game:node:update"
     case nodeDelete = "game:node:delete"
+
+    // Legacy/general activity mutations retained for compatibility.
     case activityJoin = "game:activity:join"
     case activitySkip = "game:activity:skip"
     case activityComplete = "game:activity:complete"
+
+    // Finished ActivityTask UI — authoritative mutations.
+    case activityTaskUpdate = "game:activity:task:update"
+    case activityTaskReschedule = "game:activity:task:reschedule"
+    case activityTaskSkip = "game:activity:task:skip"
+    case activityTaskComplete = "game:activity:task:complete"
+
+    // Finished ActivityMeal UI — the full node snapshot is the canonical
+    // execution-plan mutation. Fine-grained player taps remain application
+    // action telemetry and are folded into these snapshots by persistDraft().
+    case activityMealUpdate = "game:activity:meal:update"
+    case activityMealSkip = "game:activity:meal:skip"
+    case activityMealComplete = "game:activity:meal:complete"
+
+    // Finished ActivityWorkout stop UI. Fifoo Play session lifecycle continues
+    // to use the dedicated game:play:* events below.
+    case activityWorkoutUpdate = "game:activity:workout:update"
+    case activityWorkoutSelect = "game:activity:workout:select"
+    case activityWorkoutReschedule = "game:activity:workout:reschedule"
+    case activityWorkoutCheckIn = "game:activity:workout:check-in"
+
+    // Discovery/suggestion state that must survive another device/reconnect.
+    case tileReveal = "game:tile:reveal"
+    case suggestedStopDecision = "game:suggested-stop:decision"
+
+    // Social mutations.
+    case postReplyCreate = "game:post:reply:create"
     case postSave = "game:post:save"
     case hyperlinkVote = "game:hyperlink:vote"
 
     // Routes
     case routeSelect = "game:route:select"
+    case routeBuild = "game:route:build"
+    case routeAttachNode = "game:route:attach-node"
     case routeDraftUpdate = "game:route:draft:update"
     case routePreviewUpdate = "game:route:preview:update"
     case routePreviewCommit = "game:route:preview:commit"
@@ -65,6 +96,7 @@ nonisolated enum GameSocketIncomingEvent:
     case snapshot = "game:sync:snapshot"
     case nodeUpserted = "game:node:upserted"
     case nodeDeleted = "game:node:deleted"
+    case tileRevealState = "game:tile:reveal:state"
     case routeState = "game:route:state"
 
     // Search

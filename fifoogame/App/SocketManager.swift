@@ -44,11 +44,19 @@ final class SocketManager {
     private(set) var isDayMapLoading = false
 
     // MARK: TODO - replace with backend/user progress data.
+    #if DEBUG
     var userDailyProgress = 0.38
+    #else
+    var userDailyProgress = 0
+    #endif
 
     // MARK: TODO - replace with authenticated user data.
     var currentUserAvatarAssetName = "placeholder"
+    #if DEBUG
     var pendingHomeActionCount = 8
+    #else
+    var pendingHomeActionCount = 0
+    #endif
 
     /// Application-level fallback used when a workout exercise does not
     /// provide its own duration. UI views read this value rather than owning
@@ -118,12 +126,72 @@ final class SocketManager {
         case nodeAdded
         case nodeUpdated
         case nodeDeleted
+
+        // Add Stop creation
+        case addMealBrowseOpened
+        case addMealBrowseQueryChanged
+        case addMealSelected
+        case addMealPhotoSelected
+        case addMealPhotoAnalyzed
+        case addWorkoutBrowseOpened
+        case addWorkoutBrowseQueryChanged
+        case addWorkoutSelected
+        case addStopMediaSelected
+        case addStopMediaUploadStarted
+        case addStopMediaUploadCompleted
+        case addStopMediaUploadFailed
+
+        // ActivityMeal
+        case activityMealUpdated
+        case activityMealResourceOpened
+        case activityMealStepCompleted
+        case activityMealStepSkipped
+        case activityMealStepBack
+        case activityMealSelected
+        case activityMealConfirmed
+        case activityMealSourceSelected
+        case activityMealRecipeSelected
+        case activityMealIngredientsChanged
+        case activityMealIngredientsReadyChanged
+        case activityMealGroceriesNeededChanged
+        case activityMealShoppingListChanged
+        case activityMealIngredientStoreSelected
+        case activityMealVenueSelected
+        case activityMealFulfillmentSelected
+        case activityMealHostSelected
+        case activityMealInvitationChanged
+        case activityMealContributionChanged
+        case activityMealAddressChanged
+        case activityMealExternalLinkOpened
+        case activityMealSkipped
+        case activityMealCompleted
+
+        // ActivityWorkout stop
+        case activityWorkoutUpdated
+        case activityWorkoutBrowseOpened
+        case activityWorkoutBrowseClassesOpened
+        case activityWorkoutSelected
+        case activityWorkoutIndependentScheduleChanged
+        case activityWorkoutClassTimeEditAttempted
+        case activityWorkoutClassCheckedIn
+        case activityWorkoutIndependentActivated
+
+        // ActivityTask
+        case activityTaskUpdated
+        case activityTaskScheduleChanged
+        case activityTaskSkipped
+        case activityTaskCompleted
+
+        // Generic/legacy activity actions
         case activityJoined
         case activitySkipped
         case activityCompleted
+
+        // User / Post / Hyperlink
         case userSendMessage
         case userViewProgress
         case postRespond
+        case postReplySubmitted
         case postSaved
         case postViewPoster
         case postViewLinkedContent
@@ -177,6 +245,23 @@ final class SocketManager {
         case workoutLiveMessageSent
         case workoutReactionSent
         case workoutVoiceMuteToggled
+    }
+
+
+    enum ActivityMealResource:
+        String,
+        Sendable {
+
+        case meals
+        case recipeDetails
+        case recipes
+        case ingredients
+        case shoppingList
+        case ingredientStores
+        case venues
+        case friends
+        case friendChat
+        case contributionItems
     }
 
 
@@ -260,8 +345,13 @@ final class SocketManager {
 
     // MARK: - Backend
 
+    #if DEBUG
     private(set) var backendConfiguration:
-        GameBackendConfiguration = .developmentPlaceholder
+        GameBackendConfiguration = .localDevelopment
+    #else
+    private(set) var backendConfiguration:
+        GameBackendConfiguration = .productionPlaceholder
+    #endif
 
     private(set) var isSocketAuthenticated = false
 
@@ -273,10 +363,14 @@ final class SocketManager {
 
     private(set) var lastBackendError: String?
 
-    /// Step 2 keeps a memory-only mutation outbox. Durable persistence of this
-    /// queue is intentionally deferred to Step 9 persistence/offline work.
+    /// Durable exactly-once mutation outbox. Every mutation is persisted before
+    /// its first send and removed only after a successful server acknowledgement.
     private(set) var queuedSocketMutations:
         [GameQueuedSocketMutation] = []
+
+    /// Prevents the same request ID from being emitted twice concurrently.
+    private var inFlightMutationRequestIDs:
+        Set<UUID> = []
 
 
     // MARK: - Limits
@@ -298,13 +392,13 @@ final class SocketManager {
          separate source of truth.
         */
 
+        #if DEBUG
         gameStore =
             GameStore(
                 gameNodes:
                     SampleGameNodes.make()
             )
 
-        #if DEBUG
         // Install a dense full-day route/node fixture automatically while the
         // backend is disabled. This gives the map one Completed route, one
         // Chosen route, five selectable alternatives, and route-bound nodes
@@ -312,6 +406,12 @@ final class SocketManager {
         _ = gameStore.installRouteRenderDemo(
             .fullDayAllStates
         )
+        #else
+        // Release builds never bootstrap sample Day Map state.
+        gameStore =
+            GameStore(
+                gameNodes: []
+            )
         #endif
 
         // Normalize the initially selected map date using the same timezone
@@ -332,10 +432,15 @@ final class SocketManager {
 //    var workout: Workout =  Workout(id: UUID(), name: "", description: "", exercises: [], status: .notStarted, startedAt: Date(), endedAt: Date(), pausedAt: Date(), resumedAt: Date(), pausePeriods: [], currentWorkoutExerciseID: UUID(), createdAt: Date(), updatedAt: Date())
 //        liveMessages = []
 
+        #if DEBUG
         workout = Self.sample
 
         liveMessages =
             Self.sampleLiveMessages
+        #else
+        workout = Self.emptyWorkout
+        liveMessages = []
+        #endif
 
         /*
          DO NOT register socket events here.
@@ -365,6 +470,8 @@ extension SocketManager {
 
         if configuration.isEnabled {
 
+            loadQueuedSocketMutations()
+
             // Do not expose development fixtures while a real backend is the
             // configured source of truth. Step 9 will replace this blank
             // bootstrap with persisted local state before server reconciliation.
@@ -384,6 +491,9 @@ extension SocketManager {
 
             liveReactions =
                 []
+
+            userDailyProgress =
+                0
         }
 
         socket?.removeAllHandlers()
@@ -398,6 +508,13 @@ extension SocketManager {
         connectionState =
             .disconnected
 
+        guard configuration.isEnabled else {
+            ioManager = nil
+            socket = nil
+            return
+        }
+
+        #if DEBUG
         let manager =
             SocketIO.SocketManager(
                 socketURL:
@@ -407,6 +524,17 @@ extension SocketManager {
                     .compress
                 ]
             )
+        #else
+        let manager =
+            SocketIO.SocketManager(
+                socketURL:
+                    configuration.serverURL,
+                config: [
+                    .log(false),
+                    .compress
+                ]
+            )
+        #endif
 
         ioManager =
             manager
@@ -439,6 +567,78 @@ extension SocketManager {
                     backendConfiguration.ackTimeout
             )
         )
+    }
+}
+
+
+// MARK: - Authenticated Session Reconfiguration
+
+extension SocketManager {
+
+    /// Updates only the credentials used by the next Socket.IO authentication.
+    /// A token refresh must not clear the live Day Map or rebuild the socket.
+    func updateAuthenticatedCredentials(
+        userID: String,
+        authToken: String,
+        deviceID: String
+    ) {
+        guard backendConfiguration.isEnabled else { return }
+        backendConfiguration =
+            GameBackendConfiguration(
+                serverURL: backendConfiguration.serverURL,
+                userID: userID,
+                authToken: authToken,
+                deviceID: deviceID,
+                isEnabled: true,
+                ackTimeout: backendConfiguration.ackTimeout
+            )
+    }
+
+
+    /// Clears all in-memory account-scoped state before another user signs in
+    /// or the current user logs out. Durable outboxes remain namespaced by user
+    /// in UserDefaults and are loaded only when that same account returns.
+    func resetForAuthenticationTransition(
+        clearPersistedOutbox: Bool = false
+    ) {
+        if clearPersistedOutbox,
+           !backendConfiguration.userID.isEmpty {
+            UserDefaults.standard.removeObject(
+                forKey: mutationOutboxStorageKey
+            )
+        }
+
+        disconnect()
+        socket?.removeAllHandlers()
+        socket = nil
+        ioManager = nil
+
+        queuedSocketMutations = []
+        inFlightMutationRequestIDs.removeAll()
+        serverRevision = 0
+        lastBackendError = nil
+        hasReceivedInitialSnapshot = false
+        isDayMapLoading = false
+
+        gameStore.replaceGameNodesFromServer([])
+        gameStore.replaceRouteStateFromServer(DayRouteState())
+        gameStore.replaceRevealedTilesFromServer([])
+        gameStore.replaceConsumedSuggestedPathStopCellsFromServer([])
+        gameStore.prepareSuggestedPathStopsForDayReload()
+        gameStore.clearAlternativeRouteFocus()
+
+        workout = Self.emptyWorkout
+        liveMessages = []
+        liveReactions = []
+        userDailyProgress = 0
+        isShowingPlay = false
+        searchQuery = ""
+        searchResults = []
+        pendingSearchResult = nil
+        searchSocketDebounceTask?.cancel()
+        searchSocketDebounceTask = nil
+
+        backendConfiguration = .productionPlaceholder
     }
 }
 
@@ -542,6 +742,8 @@ private extension SocketManager {
                 self?.hasReceivedInitialSnapshot =
                     false
 
+                self?.inFlightMutationRequestIDs.removeAll()
+
                 self?.connectionState =
                     .disconnected
             }
@@ -559,6 +761,8 @@ private extension SocketManager {
 
                 self?.hasReceivedInitialSnapshot =
                     false
+
+                self?.inFlightMutationRequestIDs.removeAll()
 
                 self?.connectionState =
                     .reconnecting
@@ -614,6 +818,14 @@ private extension SocketManager {
             .nodeDeleted
         ) { [weak self] data in
             self?.handleServerNodeDelete(
+                data
+            )
+        }
+
+        registerIncoming(
+            .tileRevealState
+        ) { [weak self] data in
+            self?.handleServerTileRevealState(
                 data
             )
         }
@@ -731,6 +943,15 @@ private extension SocketManager {
                     ack.message
                     ?? "Socket authentication failed."
 
+                if ack.errorCode == "unauthorized" {
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if await AuthManager.shared.refreshAccessTokenForSocket() {
+                            self.authenticateSocket()
+                        }
+                    }
+                }
+
                 return
             }
 
@@ -788,7 +1009,10 @@ extension SocketManager {
     }
 
 
-    func requestInitialPlayData() {
+    func requestInitialPlayData(
+        workoutID: UUID? = nil,
+        sourceWorkoutID: String? = nil
+    ) {
 
         guard canEmitAuthenticatedSocketEvents else {
             return
@@ -798,7 +1022,12 @@ extension SocketManager {
             event:
                 .requestPlayData,
             payload:
-                GameEmptyPayload(),
+                GamePlayDataRequestPayload(
+                    workoutID:
+                        workoutID,
+                    sourceWorkoutID:
+                        sourceWorkoutID
+                ),
             requiresSnapshot:
                 false
         )
@@ -825,11 +1054,10 @@ private extension SocketManager {
             return
         }
 
+        // A snapshot is authoritative for this Day Map. Do not keep a larger
+        // locally cached revision after conflict recovery or reconnect.
         serverRevision =
-            max(
-                serverRevision,
-                payload.revision
-            )
+            payload.revision
 
         gameStore.replaceGameNodesFromServer(
             payload.nodes
@@ -837,6 +1065,20 @@ private extension SocketManager {
 
         gameStore.replaceRouteStateFromServer(
             payload.routeState.domainValue
+        )
+
+        gameStore.replaceRevealedTilesFromServer(
+            Set(
+                (payload.revealedTiles ?? [])
+                    .map(\.domainValue)
+            )
+        )
+
+        gameStore.replaceConsumedSuggestedPathStopCellsFromServer(
+            Set(
+                (payload.suggestionDecisions ?? [])
+                    .map { $0.cell.domainValue }
+            )
         )
 
         if let serverWorkout =
@@ -858,10 +1100,23 @@ private extension SocketManager {
         isDayMapLoading =
             false
 
+        let hadQueuedMutations =
+            queuedSocketMutations.contains {
+                $0.mapDate == currentMapDateString
+            }
+
         hasReceivedInitialSnapshot =
             true
 
         flushQueuedSocketMutations()
+
+        // Pass 5.43: an empty path is generated by the backend, never by
+        // SwiftUI/GameStore. Avoid racing reconnect mutations; a later
+        // authoritative snapshot can request generation once the outbox is
+        // empty.
+        if !hadQueuedMutations {
+            requestBackendGeneratedRouteIfNeeded()
+        }
     }
 
 
@@ -917,6 +1172,33 @@ private extension SocketManager {
         )
 
         rebuildSearchResults()
+    }
+
+
+    func handleServerTileRevealState(
+        _ data: [Any]
+    ) {
+
+        guard let payload:
+            GameTileRevealServerPayload =
+                decodeFirstPayload(
+                    data,
+                    as:
+                        GameTileRevealServerPayload.self
+                )
+        else {
+            return
+        }
+
+        updateRevisionIfNeeded(
+            payload.revision
+        )
+
+        gameStore.setTileRevealFromServer(
+            payload.cell.domainValue,
+            isRevealed:
+                payload.isRevealed
+        )
     }
 
 
@@ -1304,28 +1586,27 @@ private extension SocketManager {
                         envelope
                     )
 
-            guard canEmitApplicationEvents else {
-
-                queueMutation(
-                    event:
-                        event,
-                    requestID:
-                        requestID,
-                    encodedEnvelope:
-                        encoded
-                )
-
-                return
-            }
-
-            sendEncodedMutation(
+            // Persist before the first network send. If the app terminates
+            // after the server commits but before the ack arrives, the same
+            // requestID is replayed and backend idempotency returns the original
+            // successful result without applying the mutation twice.
+            queueMutation(
                 event:
-                    event.rawValue,
+                    event,
                 requestID:
                     requestID,
                 encodedEnvelope:
                     encoded
             )
+
+            guard canEmitApplicationEvents else {
+                return
+            }
+
+            // Always drain through the durable outbox. This preserves mutation
+            // order and lets every request be rebased onto the latest
+            // authoritative server revision before it is sent.
+            flushQueuedSocketMutations()
 
         } catch {
 
@@ -1430,26 +1711,79 @@ private extension SocketManager {
                     event.rawValue,
                 requestID:
                     requestID,
+                mapDate:
+                    mapDate(
+                        inEncodedEnvelope:
+                            encodedEnvelope
+                    )
+                    ?? currentMapDateString,
                 encodedEnvelope:
                     encodedEnvelope,
                 queuedAt:
                     Date()
             )
         )
+
+        persistQueuedSocketMutations()
     }
 
 
     func flushQueuedSocketMutations() {
 
-        guard canEmitApplicationEvents else {
+        guard canEmitApplicationEvents,
+              inFlightMutationRequestIDs.isEmpty
+        else {
             return
         }
 
-        let pending =
+        let pendingIndices =
             queuedSocketMutations
+                .indices
+                .filter { index in
+                    queuedSocketMutations[index].mapDate
+                    == currentMapDateString
+                }
 
-        for mutation in
-            pending {
+        guard let index =
+            pendingIndices.min(
+                by: { lhs, rhs in
+                    queuedSocketMutations[lhs].queuedAt
+                    < queuedSocketMutations[rhs].queuedAt
+                }
+            )
+        else {
+            return
+        }
+
+        let mutation =
+            queuedSocketMutations[index]
+
+        do {
+
+            let rebasedEnvelope =
+                try rebasedMutationEnvelope(
+                    mutation.encodedEnvelope,
+                    clientRevision:
+                        serverRevision
+                )
+
+            queuedSocketMutations[index] =
+                GameQueuedSocketMutation(
+                    id:
+                        mutation.id,
+                    event:
+                        mutation.event,
+                    requestID:
+                        mutation.requestID,
+                    mapDate:
+                        mutation.mapDate,
+                    encodedEnvelope:
+                        rebasedEnvelope,
+                    queuedAt:
+                        mutation.queuedAt
+                )
+
+            persistQueuedSocketMutations()
 
             sendEncodedMutation(
                 event:
@@ -1457,8 +1791,185 @@ private extension SocketManager {
                 requestID:
                     mutation.requestID,
                 encodedEnvelope:
-                    mutation.encodedEnvelope
+                    rebasedEnvelope
             )
+
+        } catch {
+
+            // A locally corrupted outbox entry can never succeed. Remove only
+            // that entry, keep the remaining queue, and continue draining.
+            queuedSocketMutations.remove(
+                at:
+                    index
+            )
+
+            persistQueuedSocketMutations()
+
+            lastBackendError =
+                "Unable to rebase queued backend mutation: \(error.localizedDescription)"
+
+            flushQueuedSocketMutations()
+        }
+    }
+
+
+    func loadQueuedSocketMutations() {
+
+        guard backendConfiguration.isEnabled,
+              let data =
+                UserDefaults.standard.data(
+                    forKey:
+                        mutationOutboxStorageKey
+                )
+        else {
+
+            queuedSocketMutations = []
+            return
+        }
+
+        do {
+
+            queuedSocketMutations =
+                try makeJSONDecoder()
+                    .decode(
+                        [GameQueuedSocketMutation].self,
+                        from:
+                            data
+                    )
+                    .sorted {
+                        $0.queuedAt < $1.queuedAt
+                    }
+
+        } catch {
+
+            queuedSocketMutations = []
+            lastBackendError =
+                "Unable to restore queued backend mutations: \(error.localizedDescription)"
+        }
+    }
+
+
+    func persistQueuedSocketMutations() {
+
+        let defaults =
+            UserDefaults.standard
+
+        guard !queuedSocketMutations.isEmpty else {
+
+            defaults.removeObject(
+                forKey:
+                    mutationOutboxStorageKey
+            )
+
+            return
+        }
+
+        do {
+
+            let data =
+                try makeJSONEncoder()
+                    .encode(
+                        queuedSocketMutations
+                    )
+
+            defaults.set(
+                data,
+                forKey:
+                    mutationOutboxStorageKey
+            )
+
+        } catch {
+
+            lastBackendError =
+                "Unable to persist queued backend mutations: \(error.localizedDescription)"
+        }
+    }
+
+
+    var mutationOutboxStorageKey: String {
+
+        "fifoo.gameMutationOutbox.v1.\(backendConfiguration.userID)"
+    }
+
+
+    func mapDate(
+        inEncodedEnvelope data: Data
+    ) -> String? {
+
+        guard let object =
+                try? JSONSerialization.jsonObject(
+                    with:
+                        data
+                ) as? [String: Any],
+              let context =
+                object["context"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        return context["mapDate"] as? String
+    }
+
+
+    func rebasedMutationEnvelope(
+        _ data: Data,
+        clientRevision: Int
+    ) throws -> Data {
+
+        let object =
+            try JSONSerialization.jsonObject(
+                with:
+                    data
+            )
+
+        guard var envelope =
+                object as? [String: Any],
+              var context =
+                envelope["context"] as? [String: Any]
+        else {
+            throw GameSocketEncodingError.expectedDictionary
+        }
+
+        context["clientRevision"] =
+            max(0, clientRevision)
+
+        context["sentAt"] =
+            ISO8601DateFormatter()
+                .string(
+                    from:
+                        Date()
+                )
+
+        envelope["context"] =
+            context
+
+        return try JSONSerialization.data(
+            withJSONObject:
+                envelope
+        )
+    }
+
+
+    func shouldRetryMutation(
+        after ack: GameSocketAck
+    ) -> Bool {
+
+        guard !ack.success else {
+            return false
+        }
+
+        switch ack.errorCode {
+
+        case "ack_timeout_or_invalid",
+             "socket_not_connected",
+             "server_error",
+             "database_unavailable",
+             "conflict":
+
+            return true
+
+        default:
+            return false
         }
     }
 
@@ -1470,10 +1981,17 @@ private extension SocketManager {
     ) {
 
         guard canEmitApplicationEvents,
-              let socket
+              let socket,
+              !inFlightMutationRequestIDs.contains(
+                requestID
+              )
         else {
             return
         }
+
+        inFlightMutationRequestIDs.insert(
+            requestID
+        )
 
         do {
 
@@ -1511,11 +2029,28 @@ private extension SocketManager {
                                 data
                             )
 
+                        self.inFlightMutationRequestIDs.remove(
+                            requestID
+                        )
+
+                        #if DEBUG
+                        print(
+                            "Socket mutation ack:",
+                            event,
+                            "success=\(ack.success)",
+                            "revision=\(ack.revision.map { String($0) } ?? "nil")",
+                            "error=\(ack.errorCode ?? "nil")",
+                            "message=\(ack.message ?? "nil")"
+                        )
+                        #endif
+
                         if ack.success {
 
                             self.queuedSocketMutations.removeAll {
                                 $0.requestID == requestID
                             }
+
+                            self.persistQueuedSocketMutations()
 
                             self.updateRevisionIfNeeded(
                                 ack.revision
@@ -1524,35 +2059,82 @@ private extension SocketManager {
                             self.lastBackendError =
                                 nil
 
+                            // Drain exactly one mutation at a time. The ack's
+                            // revision becomes the base revision for the next
+                            // queued request.
+                            self.flushQueuedSocketMutations()
+
                         } else {
 
                             self.lastBackendError =
                                 ack.message
                                 ?? "Server rejected \(event)."
 
-                            // Keep the mutation in memory so a reconnect or
-                            // later retry can replay it. Step 9 will make this
-                            // outbox durable across app termination.
-                            if !self.queuedSocketMutations.contains(
-                                where: {
-                                    $0.requestID == requestID
-                                }
+                            if self.shouldRetryMutation(
+                                after:
+                                    ack
                             ) {
 
-                                self.queuedSocketMutations.append(
-                                    GameQueuedSocketMutation(
-                                        id:
-                                            UUID(),
-                                        event:
-                                            event,
-                                        requestID:
-                                            requestID,
-                                        encodedEnvelope:
-                                            encodedEnvelope,
-                                        queuedAt:
-                                            Date()
+                                // It was persisted before first send, so leave
+                                // it in the durable outbox for reconnect replay.
+                                if !self.queuedSocketMutations.contains(
+                                    where: {
+                                        $0.requestID == requestID
+                                    }
+                                ) {
+
+                                    self.queuedSocketMutations.append(
+                                        GameQueuedSocketMutation(
+                                            id:
+                                                UUID(),
+                                            event:
+                                                event,
+                                            requestID:
+                                                requestID,
+                                            mapDate:
+                                                self.mapDate(
+                                                    inEncodedEnvelope:
+                                                        encodedEnvelope
+                                                )
+                                                ?? self.currentMapDateString,
+                                            encodedEnvelope:
+                                                encodedEnvelope,
+                                            queuedAt:
+                                                Date()
+                                        )
                                     )
-                                )
+                                }
+
+                                self.persistQueuedSocketMutations()
+
+                                if ack.errorCode == "conflict" {
+
+                                    // Another device or request advanced the
+                                    // Day Map. Stop application mutations,
+                                    // fetch the authoritative snapshot, then
+                                    // rebase/replay this same request ID.
+                                    self.hasReceivedInitialSnapshot =
+                                        false
+
+                                    self.requestInitialGameSnapshot()
+                                }
+
+                            } else {
+
+                                // Validation/authorization/not-found failures are
+                                // terminal for this exact payload. Remove the
+                                // optimistic local result by reconciling with the
+                                // server before continuing the rest of the queue.
+                                self.queuedSocketMutations.removeAll {
+                                    $0.requestID == requestID
+                                }
+
+                                self.persistQueuedSocketMutations()
+
+                                self.hasReceivedInitialSnapshot =
+                                    false
+
+                                self.requestInitialGameSnapshot()
                             }
                         }
                     }
@@ -1560,8 +2142,25 @@ private extension SocketManager {
 
         } catch {
 
+            inFlightMutationRequestIDs.remove(
+                requestID
+            )
+
+            queuedSocketMutations.removeAll {
+                $0.requestID == requestID
+            }
+
+            persistQueuedSocketMutations()
+
             lastBackendError =
                 "Unable to send \(event): \(error.localizedDescription)"
+
+            // The encoded outbox entry is locally unusable; reconcile any
+            // optimistic UI and allow the remaining queue to continue.
+            hasReceivedInitialSnapshot =
+                false
+
+            requestInitialGameSnapshot()
         }
     }
 
@@ -1791,11 +2390,13 @@ private extension SocketManager {
                 GameRouteSelectionPayload(
                     selectedRouteID:
                         routeID,
-                    routeState:
-                        GameDayRouteStatePayload(
-                            routeState:
-                                gameStore.routeState
-                        )
+                    completedRoute:
+                        GameCompletedRoutePayload(
+                            completedRoute:
+                                gameStore.routeState.completedRoute
+                        ),
+                    currentDayTime:
+                        gameStore.currentDayTime
                 )
         )
     }
@@ -2308,6 +2909,8 @@ private extension SocketManager {
 
         isDayMapLoading = true
 
+        gameStore.prepareSuggestedPathStopsForDayReload()
+
         // If disconnected, authentication/reconnect will request the currently
         // selected date automatically. If connected, request it now.
         requestInitialGameSnapshot()
@@ -2421,8 +3024,8 @@ extension SocketManager {
 extension SocketManager {
 
     /// First tap on a hidden card is a reveal action, not a background tap.
-    /// Persistence is intentionally deferred until the backend reveal-state
-    /// contract is defined; GameStore performs the local state transition.
+    /// GameStore performs the optimistic local transition; Step 2 now emits an
+    /// acknowledged reveal mutation so discovery state can reconcile cross-device.
     func handleDayTileReveal(
         cellID: GridCellID,
         nodeID: GameNodeID?
@@ -2443,6 +3046,22 @@ extension SocketManager {
         recordApplicationAction(
             .tileRevealed,
             metadata: metadata
+        )
+
+        emitMutation(
+            event:
+                .tileReveal,
+            payload:
+                GameTileRevealMutationPayload(
+                    cell:
+                        GameTileCellPayload(
+                            cellID: cellID
+                        ),
+                    nodeID:
+                        nodeID,
+                    isRevealed:
+                        true
+                )
         )
     }
 
@@ -2537,6 +3156,24 @@ extension SocketManager {
             cellID: cellID,
             coordinate: coordinate
         )
+
+        gameStore.markSuggestedPathStopConsumed(
+            cellID
+        )
+
+        emitMutation(
+            event:
+                .suggestedStopDecision,
+            payload:
+                GameSuggestedStopDecisionPayload(
+                    cell:
+                        GameTileCellPayload(
+                            cellID: cellID
+                        ),
+                    decision:
+                        .accepted
+                )
+        )
     }
 
 
@@ -2549,6 +3186,24 @@ extension SocketManager {
             .suggestedStopRejected,
             cellID: cellID,
             coordinate: coordinate
+        )
+
+        gameStore.markSuggestedPathStopConsumed(
+            cellID
+        )
+
+        emitMutation(
+            event:
+                .suggestedStopDecision,
+            payload:
+                GameSuggestedStopDecisionPayload(
+                    cell:
+                        GameTileCellPayload(
+                            cellID: cellID
+                        ),
+                    decision:
+                        .rejected
+                )
         )
     }
 
@@ -2657,29 +3312,108 @@ extension SocketManager {
 
 
     func addGameNode(
-        _ node: GameMapNode
+        _ node: GameMapNode,
+        attachToExistingPath: Bool = false
     ) {
 
         gameStore.addGameNode(
             node
         )
 
+        // GameStore may canonicalize placement-derived values while adding a
+        // node (for example a road-vertex time). Persist and route the exact
+        // version that is now the local source of truth rather than the
+        // pre-insertion draft supplied by the editor.
+        let storedNode =
+            gameStore.gameNode(
+                id: node.id
+            )
+            ?? node
+
+        var metadata =
+            nodeMetadata(
+                storedNode
+            )
+
+        metadata["attachToExistingPath"] =
+            attachToExistingPath
+            ? "true"
+            : "false"
+
         recordApplicationAction(
             .nodeAdded,
             metadata:
-                nodeMetadata(
-                    node
-                )
+                metadata
         )
 
-        emitMutation(
-            event:
-                .nodeAdd,
-            payload:
-                GameNodeMutationPayload(
-                    node: node
+        let attachedAnchor =
+            GameNodeRouteAnchorResolver()
+                .resolve(
+                    node: storedNode,
+                    graph: gameStore.roadGraph
                 )
-        )
+
+        // Backend route attachment is only valid for a future routable stop.
+        // If the user edited the stop time while the Add Stop flow was open,
+        // never let that make persistence depend on a route validation error:
+        // save the node normally instead.
+        let isFutureRoutableStop =
+            attachedAnchor.map {
+                $0.nodeCoordinate.time
+                    > gameStore.currentDayTime
+            }
+            ?? false
+
+        // When there is no path yet, the first future routable addition gives
+        // the backend enough data to create the authoritative initial path.
+        // When a path already exists, only the explicit Attach choice rebuilds
+        // it.
+        let shouldBuildOrAttachPath =
+            isFutureRoutableStop
+            &&
+            (
+                attachToExistingPath
+                ||
+                !gameStore.routeState.hasChosenFutureRoute
+            )
+
+        if shouldBuildOrAttachPath {
+
+            emitMutation(
+                event:
+                    .routeAttachNode,
+                payload:
+                    GameRouteAttachNodePayload(
+                        node: storedNode,
+                        roadGraph: gameStore.roadGraph,
+                        nodeAnchors: backendRouteNodeAnchors(),
+                        attachedNodeAnchor:
+                            attachedAnchor.map {
+                                GameBackendRouteNodeAnchorPayload(
+                                    anchor: $0
+                                )
+                            },
+                        currentDayTime: gameStore.currentDayTime,
+                        completedRoute:
+                            GameCompletedRoutePayload(
+                                completedRoute:
+                                    gameStore.routeState.completedRoute
+                            ),
+                        maxAlternatives: 3
+                    )
+            )
+
+        } else {
+
+            emitMutation(
+                event:
+                    .nodeAdd,
+                payload:
+                    GameNodeMutationPayload(
+                        node: storedNode
+                    )
+            )
+        }
     }
 
 
@@ -2687,25 +3421,10 @@ extension SocketManager {
         _ node: GameMapNode
     ) {
 
-        gameStore.updateGameNode(
-            node
-        )
-
-        recordApplicationAction(
-            .nodeUpdated,
-            metadata:
-                nodeMetadata(
-                    node
-                )
-        )
-
-        emitMutation(
-            event:
-                .nodeUpdate,
-            payload:
-                GameNodeMutationPayload(
-                    node: node
-                )
+        persistNodeUpdate(
+            node,
+            actionName:
+                .nodeUpdated
         )
     }
 
@@ -2749,59 +3468,987 @@ extension SocketManager {
         node: GameMapNode
     ) {
 
-        // The editor already passes its normalized draft. Keep the domain
-        // status synchronized here as well so this method can later become the
-        // single optimistic-update + Socket.IO entry point.
+        let actionName: ApplicationActionName
+
+        switch action {
+        case .join:
+            actionName = .activityJoined
+
+        case .skip:
+            actionName = .activitySkipped
+
+        case .completed:
+            actionName = .activityCompleted
+        }
+
+        performActivityNodeMutation(
+            action,
+            node:
+                node,
+            actionName:
+                actionName
+        )
+    }
+
+
+
+    // MARK: - Add Stop Creation Actions
+
+    func addMealBrowseOpened(
+        at coordinate: MapCoordinate
+    ) {
+
+        recordApplicationAction(
+            .addMealBrowseOpened,
+            metadata:
+                coordinateMetadata(
+                    coordinate
+                )
+        )
+    }
+
+
+    func addMealBrowseQueryChanged(
+        _ query: String
+    ) {
+
+        recordApplicationAction(
+            .addMealBrowseQueryChanged,
+            metadata: [
+                "queryLength":
+                    String(query.count)
+            ]
+        )
+    }
+
+
+    func addMealSelected(
+        mealID: String,
+        title: String,
+        source: String
+    ) {
+
+        recordApplicationAction(
+            .addMealSelected,
+            metadata: [
+                "mealId":
+                    mealID,
+                "title":
+                    title,
+                "source":
+                    source
+            ]
+        )
+    }
+
+
+    func addMealPhotoSelected() {
+
+        recordApplicationAction(
+            .addMealPhotoSelected
+        )
+    }
+
+
+    func addMealPhotoAnalyzed(
+        suggestedTitle: String
+    ) {
+
+        recordApplicationAction(
+            .addMealPhotoAnalyzed,
+            metadata: [
+                "suggestedTitle":
+                    suggestedTitle
+            ]
+        )
+    }
+
+
+    func addWorkoutBrowseOpened(
+        at coordinate: MapCoordinate
+    ) {
+
+        recordApplicationAction(
+            .addWorkoutBrowseOpened,
+            metadata:
+                coordinateMetadata(
+                    coordinate
+                )
+        )
+    }
+
+
+    func addWorkoutBrowseQueryChanged(
+        _ query: String
+    ) {
+
+        recordApplicationAction(
+            .addWorkoutBrowseQueryChanged,
+            metadata: [
+                "queryLength":
+                    String(query.count)
+            ]
+        )
+    }
+
+
+    func addWorkoutSelected(
+        workoutID: String,
+        title: String,
+        workoutType: ActivityWorkoutType
+    ) {
+
+        recordApplicationAction(
+            .addWorkoutSelected,
+            metadata: [
+                "workoutId":
+                    workoutID,
+                "title":
+                    title,
+                "workoutType":
+                    workoutType.rawValue
+            ]
+        )
+    }
+
+
+    func addStopMediaSelected(
+        context: String,
+        imageCount: Int,
+        videoCount: Int
+    ) {
+
+        recordApplicationAction(
+            .addStopMediaSelected,
+            metadata: [
+                "context":
+                    context,
+                "imageCount":
+                    String(imageCount),
+                "videoCount":
+                    String(videoCount)
+            ]
+        )
+    }
+
+
+    func addStopMediaUploadStarted(
+        context: String,
+        itemCount: Int
+    ) {
+
+        recordApplicationAction(
+            .addStopMediaUploadStarted,
+            metadata: [
+                "context":
+                    context,
+                "itemCount":
+                    String(itemCount)
+            ]
+        )
+    }
+
+
+    func addStopMediaUploadCompleted(
+        context: String,
+        uploadedCount: Int
+    ) {
+
+        recordApplicationAction(
+            .addStopMediaUploadCompleted,
+            metadata: [
+                "context":
+                    context,
+                "uploadedCount":
+                    String(uploadedCount)
+            ]
+        )
+    }
+
+
+    func addStopMediaUploadFailed(
+        context: String,
+        message: String
+    ) {
+
+        recordApplicationAction(
+            .addStopMediaUploadFailed,
+            metadata: [
+                "context":
+                    context,
+                "message":
+                    message
+            ]
+        )
+    }
+
+
+    // MARK: - ActivityMeal Actions
+
+    func updateActivityMeal(
+        _ node: GameMapNode
+    ) {
+
+        persistNodeUpdate(
+            node,
+            actionName:
+                .activityMealUpdated,
+            socketEvent:
+                .activityMealUpdate
+        )
+    }
+
+
+    /// ActivityMeal Skip currently removes the stop from the map. Preserve
+    /// that established product behavior while emitting the semantic Step 2
+    /// mutation so the server can update meal/activity state and delete the stop.
+    func skipActivityMealAndRemoveStop(
+        _ node: GameMapNode
+    ) {
+
+        gameStore.deleteGameNode(
+            id:
+                node.id
+        )
+
+        recordApplicationAction(
+            .activityMealSkipped,
+            metadata:
+                nodeMetadata(
+                    node
+                )
+        )
+
+        emitMutation(
+            event:
+                .activityMealSkip,
+            payload:
+                GameActivityMutationPayload(
+                    action:
+                        .skip,
+                    node:
+                        node
+                )
+        )
+    }
+
+
+    func completeActivityMeal(
+        _ node: GameMapNode
+    ) {
+
+        performActivityNodeMutation(
+            .completed,
+            node:
+                node,
+            actionName:
+                .activityMealCompleted,
+            socketEventOverride:
+                .activityMealComplete
+        )
+    }
+
+
+    func activityMealResourceOpened(
+        nodeID: GameNodeID,
+        resource: ActivityMealResource
+    ) {
+
+        recordApplicationAction(
+            .activityMealResourceOpened,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "resource":
+                            resource.rawValue
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealStepCompleted(
+        nodeID: GameNodeID,
+        stepID: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealStepCompleted,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "stepId":
+                            stepID
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealStepSkipped(
+        nodeID: GameNodeID,
+        stepID: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealStepSkipped,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "stepId":
+                            stepID
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealStepMovedBack(
+        nodeID: GameNodeID,
+        stepID: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealStepBack,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "stepId":
+                            stepID
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealSelectedMeal(
+        nodeID: GameNodeID,
+        mealID: String,
+        title: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealSelected,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "mealId":
+                            mealID,
+                        "title":
+                            title
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealConfirmationChanged(
+        nodeID: GameNodeID,
+        isConfirmed: Bool
+    ) {
+
+        recordApplicationAction(
+            .activityMealConfirmed,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "isConfirmed":
+                            String(isConfirmed)
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealSourceSelected(
+        nodeID: GameNodeID,
+        source: ActivityMealSource
+    ) {
+
+        recordApplicationAction(
+            .activityMealSourceSelected,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "source":
+                            source.rawValue
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealRecipeSelected(
+        nodeID: GameNodeID,
+        recipeID: String,
+        title: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealRecipeSelected,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "recipeId":
+                            recipeID,
+                        "title":
+                            title
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealIngredientsChanged(
+        nodeID: GameNodeID,
+        count: Int
+    ) {
+
+        recordApplicationAction(
+            .activityMealIngredientsChanged,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "count":
+                            String(count)
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealIngredientsReadyChanged(
+        nodeID: GameNodeID,
+        isReady: Bool
+    ) {
+
+        recordApplicationAction(
+            .activityMealIngredientsReadyChanged,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "isReady":
+                            String(isReady)
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealGroceriesNeededChanged(
+        nodeID: GameNodeID,
+        isNeeded: Bool
+    ) {
+
+        recordApplicationAction(
+            .activityMealGroceriesNeededChanged,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "isNeeded":
+                            String(isNeeded)
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealShoppingListChanged(
+        nodeID: GameNodeID,
+        count: Int
+    ) {
+
+        recordApplicationAction(
+            .activityMealShoppingListChanged,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "count":
+                            String(count)
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealIngredientStoreSelected(
+        nodeID: GameNodeID,
+        storeID: String,
+        name: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealIngredientStoreSelected,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "storeId":
+                            storeID,
+                        "name":
+                            name
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealVenueSelected(
+        nodeID: GameNodeID,
+        venueID: String,
+        name: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealVenueSelected,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "venueId":
+                            venueID,
+                        "name":
+                            name
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealFulfillmentSelected(
+        nodeID: GameNodeID,
+        mode: ActivityMealFulfillmentMode
+    ) {
+
+        recordApplicationAction(
+            .activityMealFulfillmentSelected,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "mode":
+                            mode.rawValue
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealHostSelected(
+        nodeID: GameNodeID,
+        friendID: String,
+        name: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealHostSelected,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "friendId":
+                            friendID,
+                        "name":
+                            name
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealInvitationChanged(
+        nodeID: GameNodeID,
+        isConfirmed: Bool
+    ) {
+
+        recordApplicationAction(
+            .activityMealInvitationChanged,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "isConfirmed":
+                            String(isConfirmed)
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealContributionChanged(
+        nodeID: GameNodeID,
+        itemCount: Int
+    ) {
+
+        recordApplicationAction(
+            .activityMealContributionChanged,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "itemCount":
+                            String(itemCount)
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealAddressChanged(
+        nodeID: GameNodeID,
+        hasAddress: Bool
+    ) {
+
+        recordApplicationAction(
+            .activityMealAddressChanged,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "hasAddress":
+                            String(hasAddress)
+                    ]
+                )
+        )
+    }
+
+
+    func activityMealExternalLinkOpened(
+        nodeID: GameNodeID,
+        destination: String
+    ) {
+
+        recordApplicationAction(
+            .activityMealExternalLinkOpened,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID,
+                    extra: [
+                        "destination":
+                            destination
+                    ]
+                )
+        )
+    }
+
+
+    // MARK: - ActivityWorkout Stop Actions
+
+    func updateActivityWorkout(
+        _ node: GameMapNode
+    ) {
+
+        persistNodeUpdate(
+            node,
+            actionName:
+                .activityWorkoutUpdated,
+            socketEvent:
+                .activityWorkoutUpdate
+        )
+    }
+
+
+    func activityWorkoutBrowseOpened(
+        nodeID: GameNodeID,
+        classesOnly: Bool
+    ) {
+
+        recordApplicationAction(
+            classesOnly
+            ? .activityWorkoutBrowseClassesOpened
+            : .activityWorkoutBrowseOpened,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID
+                )
+        )
+    }
+
+
+    func selectActivityWorkout(
+        _ node: GameMapNode,
+        selectedWorkoutID: String,
+        selectedWorkoutType: ActivityWorkoutType
+    ) {
+
+        persistNodeUpdate(
+            node,
+            actionName:
+                .activityWorkoutSelected,
+            extraMetadata: [
+                "selectedWorkoutId":
+                    selectedWorkoutID,
+                "selectedWorkoutType":
+                    selectedWorkoutType.rawValue
+            ],
+            socketEvent:
+                .activityWorkoutSelect
+        )
+    }
+
+
+    func rescheduleIndependentActivityWorkout(
+        _ node: GameMapNode
+    ) {
+
+        persistNodeUpdate(
+            node,
+            actionName:
+                .activityWorkoutIndependentScheduleChanged,
+            socketEvent:
+                .activityWorkoutReschedule
+        )
+    }
+
+
+    func activityWorkoutClassTimeEditAttempted(
+        nodeID: GameNodeID
+    ) {
+
+        recordApplicationAction(
+            .activityWorkoutClassTimeEditAttempted,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        nodeID
+                )
+        )
+    }
+
+
+    func checkInActivityWorkoutClass(
+        _ node: GameMapNode
+    ) {
+
+        persistNodeUpdate(
+            node,
+            actionName:
+                .activityWorkoutClassCheckedIn,
+            socketEvent:
+                .activityWorkoutCheckIn
+        )
+    }
+
+
+    // MARK: - ActivityTask Actions
+
+    func updateActivityTask(
+        _ node: GameMapNode
+    ) {
+
+        persistNodeUpdate(
+            node,
+            actionName:
+                .activityTaskUpdated,
+            socketEvent:
+                .activityTaskUpdate
+        )
+    }
+
+
+    /// Permanently removes an ActivityTask stop from the selected Day Map.
+    /// Task deletion uses the generic authoritative node-delete contract; the
+    /// backend scopes deletion to the authenticated user's current Day Map.
+    func deleteActivityTask(
+        _ node: GameMapNode
+    ) {
+
+        guard case let .activity(content) = node.content,
+              content.resolvedActivityType == .task
+        else {
+            lastBackendError =
+                "Cannot delete ActivityTask from a non-task node."
+            return
+        }
+
+        deleteGameNode(
+            id: node.id
+        )
+    }
+
+
+    func rescheduleActivityTask(
+        _ node: GameMapNode
+    ) {
+
+        persistNodeUpdate(
+            node,
+            actionName:
+                .activityTaskScheduleChanged,
+            socketEvent:
+                .activityTaskReschedule
+        )
+    }
+
+
+    func skipActivityTask(
+        _ node: GameMapNode
+    ) {
+
+        performActivityNodeMutation(
+            .skip,
+            node:
+                node,
+            actionName:
+                .activityTaskSkipped,
+            socketEventOverride:
+                .activityTaskSkip
+        )
+    }
+
+
+    func completeActivityTask(
+        _ node: GameMapNode
+    ) {
+
+        performActivityNodeMutation(
+            .completed,
+            node:
+                node,
+            actionName:
+                .activityTaskCompleted,
+            socketEventOverride:
+                .activityTaskComplete
+        )
+    }
+
+
+    // MARK: - Post Actions
+
+    func respondToPost(
+        _ node: GameMapNode
+    ) {
+
+        recordApplicationAction(
+            .postRespond,
+            metadata:
+                nodeMetadata(
+                    node
+                )
+        )
+    }
+
+
+    func submitPostReply(
+        text: String,
+        node: GameMapNode
+    ) {
+
+        let cleaned =
+            text.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+        guard !cleaned.isEmpty else {
+            return
+        }
+
+        recordApplicationAction(
+            .postReplySubmitted,
+            metadata:
+                applicationMetadata(
+                    nodeID:
+                        node.id,
+                    extra: [
+                        "replyLength":
+                            String(cleaned.count)
+                    ]
+                )
+        )
+
+        guard case let .post(content) = node.content else {
+
+            lastBackendError =
+                "Cannot submit a post reply from a non-post node."
+
+            return
+        }
+
+        emitMutation(
+            event:
+                .postReplyCreate,
+            payload:
+                GamePostReplyCreatePayload(
+                    nodeID:
+                        node.id,
+                    postID:
+                        content.postID,
+                    parentReplyID:
+                        nil,
+                    text:
+                        cleaned,
+                    createdAt:
+                        Date()
+                )
+        )
+    }
+
+
+    func savePost(
+        _ node: GameMapNode
+    ) {
+
         var updatedNode =
             node
 
-        if case var .activity(content) = updatedNode.content,
-           let statusValue = action.statusValue {
+        if case var .post(content) = updatedNode.content,
+           var snapshot = content.snapshot {
 
-            content.status =
-                statusValue
+            if !snapshot.isSaved {
+                snapshot.postSavedCount += 1
+            }
+
+            snapshot.savedPostStatus =
+                "Saved"
+
+            content.snapshot =
+                snapshot
 
             updatedNode.content =
-                .activity(
+                .post(
                     content
                 )
 
             gameStore.updateGameNode(
                 updatedNode
             )
-        } else if action == .join {
-
-            // Join does not invent a new Activity.status value. Preserve any
-            // valid edits made before the user tapped Join.
-            gameStore.updateGameNode(
-                updatedNode
-            )
-        }
-
-        let actionName: ApplicationActionName
-        let socketAction: GameActivitySocketAction
-        let socketEvent: GameSocketOutgoingEvent
-
-        switch action {
-
-        case .join:
-            actionName = .activityJoined
-            socketAction = .join
-            socketEvent = .activityJoin
-
-        case .skip:
-            actionName = .activitySkipped
-            socketAction = .skip
-            socketEvent = .activitySkip
-
-        case .completed:
-            actionName = .activityCompleted
-            socketAction = .complete
-            socketEvent = .activityComplete
         }
 
         recordApplicationAction(
-            actionName,
+            .postSaved,
             metadata:
                 nodeMetadata(
                     updatedNode
@@ -2810,13 +4457,84 @@ extension SocketManager {
 
         emitMutation(
             event:
-                socketEvent,
+                .postSave,
             payload:
-                GameActivityMutationPayload(
-                    action:
-                        socketAction,
+                GamePostSavePayload(
                     node:
                         updatedNode
+                )
+        )
+    }
+
+
+    func viewPostPoster(
+        _ node: GameMapNode
+    ) {
+
+        recordApplicationAction(
+            .postViewPoster,
+            metadata:
+                nodeMetadata(
+                    node
+                )
+        )
+    }
+
+
+    func viewPostLinkedContent(
+        _ linkedContent: PostNodeLinkedContent,
+        node: GameMapNode
+    ) {
+
+        var metadata =
+            nodeMetadata(
+                node
+            )
+
+        metadata["linkedContent"] =
+            linkedContent.title
+
+        recordApplicationAction(
+            .postViewLinkedContent,
+            metadata:
+                metadata
+        )
+    }
+
+
+    // MARK: - User Stop Actions
+
+    func openUserConversation(
+        _ node: GameMapNode
+    ) {
+
+        gameStore.updateGameNode(
+            node
+        )
+
+        recordApplicationAction(
+            .userSendMessage,
+            metadata:
+                nodeMetadata(
+                    node
+                )
+        )
+    }
+
+
+    func openUserProgress(
+        _ node: GameMapNode
+    ) {
+
+        gameStore.updateGameNode(
+            node
+        )
+
+        recordApplicationAction(
+            .userViewProgress,
+            metadata:
+                nodeMetadata(
+                    node
                 )
         )
     }
@@ -2827,34 +4545,19 @@ extension SocketManager {
         node: GameMapNode
     ) {
 
-        // Preserve map-time edits before a host navigation is requested.
-        gameStore.updateGameNode(
-            node
-        )
-
         switch action {
-
         case .sendMessage:
-
-            recordApplicationAction(
-                .userSendMessage,
-                metadata:
-                    nodeMetadata(
-                        node
-                    )
+            openUserConversation(
+                node
             )
 
         case .viewProgress:
-
-            recordApplicationAction(
-                .userViewProgress,
-                metadata:
-                    nodeMetadata(
-                        node
-                    )
+            openUserProgress(
+                node
             )
         }
     }
+
 
 
     func handlePostNodeAction(
@@ -2863,104 +4566,91 @@ extension SocketManager {
     ) {
 
         switch action {
-
         case .respond:
-
-            recordApplicationAction(
-                .postRespond,
-                metadata:
-                    nodeMetadata(
-                        node
-                    )
+            respondToPost(
+                node
             )
 
-        case .submitReply:
-
-            // The map-level action intentionally records the reply event but
-            // leaves the authoritative comment payload to the social backend.
-            // GameNodePostView adds an optimistic local row immediately.
-            recordApplicationAction(
-                .postRespond,
-                metadata:
-                    nodeMetadata(
-                        node
-                    )
+        case let .submitReply(text):
+            submitPostReply(
+                text:
+                    text,
+                node:
+                    node
             )
 
         case .save:
-
-            // Optimistic local state for the map snapshot. Step 2 will emit
-            // the action and reconcile this with the authoritative Post.
-            var updatedNode =
+            savePost(
                 node
-
-            if case var .post(content) = updatedNode.content,
-               var snapshot = content.snapshot {
-
-                if !snapshot.isSaved {
-                    snapshot.postSavedCount += 1
-                }
-
-                snapshot.savedPostStatus =
-                    "Saved"
-
-                content.snapshot =
-                    snapshot
-
-                updatedNode.content =
-                    .post(
-                        content
-                    )
-
-                gameStore.updateGameNode(
-                    updatedNode
-                )
-            }
-
-            recordApplicationAction(
-                .postSaved,
-                metadata:
-                    nodeMetadata(
-                        updatedNode
-                    )
-            )
-
-            emitMutation(
-                event:
-                    .postSave,
-                payload:
-                    GamePostSavePayload(
-                        node:
-                            updatedNode
-                    )
             )
 
         case .viewPoster:
-
-            recordApplicationAction(
-                .postViewPoster,
-                metadata:
-                    nodeMetadata(
-                        node
-                    )
+            viewPostPoster(
+                node
             )
 
         case let .viewLinkedContent(linkedContent):
+            viewPostLinkedContent(
+                linkedContent,
+                node:
+                    node
+            )
+        }
+    }
 
-            var metadata =
+
+
+    // MARK: - Hyperlink Actions
+
+    func upvoteHyperlink(
+        _ node: GameMapNode
+    ) {
+
+        recordApplicationAction(
+            .hyperlinkUpvoted,
+            metadata:
                 nodeMetadata(
                     node
                 )
+        )
 
-            metadata["linkedContent"] =
-                linkedContent.title
+        emitMutation(
+            event:
+                .hyperlinkVote,
+            payload:
+                GameHyperlinkVotePayload(
+                    nodeID:
+                        node.id,
+                    vote:
+                        .upvote
+                )
+        )
+    }
 
-            recordApplicationAction(
-                .postViewLinkedContent,
-                metadata:
-                    metadata
-            )
-        }
+
+    func downvoteHyperlink(
+        _ node: GameMapNode
+    ) {
+
+        recordApplicationAction(
+            .hyperlinkDownvoted,
+            metadata:
+                nodeMetadata(
+                    node
+                )
+        )
+
+        emitMutation(
+            event:
+                .hyperlinkVote,
+            payload:
+                GameHyperlinkVotePayload(
+                    nodeID:
+                        node.id,
+                    vote:
+                        .downvote
+                )
+        )
     }
 
 
@@ -2970,52 +4660,18 @@ extension SocketManager {
     ) {
 
         switch action {
-
         case .upvote:
-
-            recordApplicationAction(
-                .hyperlinkUpvoted,
-                metadata:
-                    nodeMetadata(
-                        node
-                    )
-            )
-
-            emitMutation(
-                event:
-                    .hyperlinkVote,
-                payload:
-                    GameHyperlinkVotePayload(
-                        nodeID:
-                            node.id,
-                        vote:
-                            .upvote
-                    )
+            upvoteHyperlink(
+                node
             )
 
         case .downvote:
-
-            recordApplicationAction(
-                .hyperlinkDownvoted,
-                metadata:
-                    nodeMetadata(
-                        node
-                    )
-            )
-
-            emitMutation(
-                event:
-                    .hyperlinkVote,
-                payload:
-                    GameHyperlinkVotePayload(
-                        nodeID:
-                            node.id,
-                        vote:
-                            .downvote
-                    )
+            downvoteHyperlink(
+                node
             )
         }
     }
+
 
 
     func openPlay() {
@@ -3077,31 +4733,35 @@ extension SocketManager {
         routeID: RouteID
     ) -> Bool {
 
-        let succeeded =
-            gameStore.chooseFutureRoute(
-                routeID:
-                    routeID
-            )
-
-        if succeeded {
-
-            recordApplicationAction(
-                .alternateRouteSelected,
-                metadata: [
-                    "routeId":
-                        routeID.rawValue.uuidString
-                ]
-            )
-
-            emitCurrentRouteSelection(
-                routeID:
-                    routeID
-            )
+        if gameStore.routeState.chosenFutureRoute.id == routeID {
+            return true
         }
 
-        return succeeded
-    }
+        guard gameStore.routeState.alternativeRoutes.contains(
+            where: { $0.id == routeID }
+        ) else {
+            return false
+        }
 
+        recordApplicationAction(
+            .alternateRouteSelected,
+            metadata: [
+                "routeId":
+                    routeID.rawValue.uuidString
+            ]
+        )
+
+        // The client no longer constructs/switches route geometry. It sends
+        // only the user's selected alternative and the latest completed-route
+        // context; the backend performs the authoritative swap and broadcasts
+        // the resulting route state.
+        emitCurrentRouteSelection(
+            routeID:
+                routeID
+        )
+
+        return true
+    }
 
     func beginNewFutureRouteDraft() {
 
@@ -3508,6 +5168,77 @@ extension SocketManager {
 
 
 // =====================================================
+// MARK: - Backend Route Authority
+// =====================================================
+
+extension SocketManager {
+
+    /// Requests initial path generation only when the authoritative snapshot
+    /// contains no chosen path. The user never taps a Build/Create Path UI.
+    func requestBackendGeneratedRouteIfNeeded() {
+
+        guard
+            backendConfiguration.isEnabled,
+            hasReceivedInitialSnapshot,
+            !gameStore.routeState.hasChosenFutureRoute,
+            !gameStore.routeState.hasCompletedRoute
+        else {
+            return
+        }
+
+        let anchors =
+            backendRouteNodeAnchors()
+
+        guard !anchors.isEmpty else {
+            return
+        }
+
+        emitMutation(
+            event:
+                .routeBuild,
+            payload:
+                GameBackendRouteBuildPayload(
+                    roadGraph:
+                        gameStore.roadGraph,
+                    nodeAnchors:
+                        anchors,
+                    currentDayTime:
+                        gameStore.currentDayTime,
+                    maxAlternatives:
+                        3
+                )
+        )
+    }
+}
+
+
+private extension SocketManager {
+
+    func backendRouteNodeAnchors()
+        -> [GameBackendRouteNodeAnchorPayload] {
+
+        let resolver =
+            GameNodeRouteAnchorResolver()
+
+        return gameStore.gameNodes
+            .filter(\.isEnabled)
+            .compactMap { node in
+
+                resolver.resolve(
+                    node: node,
+                    graph: gameStore.roadGraph
+                )
+            }
+            .map {
+                GameBackendRouteNodeAnchorPayload(
+                    anchor: $0
+                )
+            }
+    }
+}
+
+
+// =====================================================
 // MARK: - Search Actions
 // =====================================================
 
@@ -3660,8 +5391,41 @@ extension SocketManager {
     /// the full exercise payload; until the backend catalog supplies one, the
     /// current exercise template is reused and reset for the selected workout.
     func activateIndependentWorkout(
-        from summary: ActivityWorkoutNodeSummary
+        from summary: ActivityWorkoutNodeSummary,
+        activityNodeID: GameNodeID
     ) {
+
+        let sessionID =
+            activityNodeID.rawValue
+
+        // If this exact ActivityWorkout occurrence is already restored from
+        // PostgreSQL, preserve its lifecycle/exercise progress instead of
+        // resetting it merely because the user reopened the node.
+        if workout.id == sessionID,
+           workout.sourceActivityNodeID == sessionID,
+           workout.sourceWorkoutID == summary.workoutID {
+
+            requestInitialPlayData(
+                workoutID:
+                    sessionID,
+                sourceWorkoutID:
+                    summary.workoutID
+            )
+
+            recordApplicationAction(
+                .activityWorkoutIndependentActivated,
+                metadata: [
+                    "workoutId":
+                        summary.workoutID,
+                    "title":
+                        summary.title,
+                    "restoredSession":
+                        "true"
+                ]
+            )
+
+            return
+        }
 
         let isLocalBrowseWorkout =
             summary.workoutID.hasPrefix("independent-")
@@ -3698,7 +5462,12 @@ extension SocketManager {
         }
 
         workout = Workout(
-            id: UUID(uuidString: summary.workoutID) ?? UUID(),
+            id:
+                sessionID,
+            sourceWorkoutID:
+                summary.workoutID,
+            sourceActivityNodeID:
+                sessionID,
             name: summary.title,
             description: summary.description,
             exercises: exercises,
@@ -3715,6 +5484,28 @@ extension SocketManager {
             totalFloorsDescended: 0,
             createdAt: Date(),
             updatedAt: Date()
+        )
+
+        // Ask the backend for this exact ActivityWorkout occurrence. If no
+        // persisted session exists, the fresh not-started workout above stays
+        // in place. If one exists, game:play:workout replaces it.
+        requestInitialPlayData(
+            workoutID:
+                sessionID,
+            sourceWorkoutID:
+                summary.workoutID
+        )
+
+        recordApplicationAction(
+            .activityWorkoutIndependentActivated,
+            metadata: [
+                "workoutId":
+                    summary.workoutID,
+                "title":
+                    summary.title,
+                "sessionId":
+                    sessionID.uuidString
+            ]
         )
     }
 
@@ -4351,6 +6142,136 @@ private extension SocketManager {
     }
 
 
+    func applicationMetadata(
+        nodeID: GameNodeID,
+        extra: [String: String] = [:]
+    ) -> [String: String] {
+
+        var metadata =
+            gameStore
+                .gameNode(
+                    id:
+                        nodeID
+                )
+                .map(
+                    nodeMetadata
+                )
+            ?? [
+                "nodeId":
+                    nodeID.rawValue.uuidString
+            ]
+
+        for (key, value) in extra {
+            metadata[key] = value
+        }
+
+        return metadata
+    }
+
+
+    func persistNodeUpdate(
+        _ node: GameMapNode,
+        actionName: ApplicationActionName,
+        extraMetadata: [String: String] = [:],
+        socketEvent: GameSocketOutgoingEvent = .nodeUpdate
+    ) {
+
+        gameStore.updateGameNode(
+            node
+        )
+
+        var metadata =
+            nodeMetadata(
+                node
+            )
+
+        for (key, value) in extraMetadata {
+            metadata[key] = value
+        }
+
+        recordApplicationAction(
+            actionName,
+            metadata:
+                metadata
+        )
+
+        emitMutation(
+            event:
+                socketEvent,
+            payload:
+                GameNodeMutationPayload(
+                    node: node
+                )
+        )
+    }
+
+
+    func performActivityNodeMutation(
+        _ action: ActivityNodeEditorAction,
+        node: GameMapNode,
+        actionName: ApplicationActionName,
+        socketEventOverride: GameSocketOutgoingEvent? = nil
+    ) {
+
+        var updatedNode =
+            node
+
+        if case var .activity(content) = updatedNode.content,
+           let statusValue = action.statusValue {
+
+            content.status =
+                statusValue
+
+            updatedNode.content =
+                .activity(
+                    content
+                )
+        }
+
+        gameStore.updateGameNode(
+            updatedNode
+        )
+
+        recordApplicationAction(
+            actionName,
+            metadata:
+                nodeMetadata(
+                    updatedNode
+                )
+        )
+
+        let socketAction: GameActivitySocketAction
+        let defaultSocketEvent: GameSocketOutgoingEvent
+
+        switch action {
+        case .join:
+            socketAction = .join
+            defaultSocketEvent = .activityJoin
+
+        case .skip:
+            socketAction = .skip
+            defaultSocketEvent = .activitySkip
+
+        case .completed:
+            socketAction = .complete
+            defaultSocketEvent = .activityComplete
+        }
+
+        emitMutation(
+            event:
+                socketEventOverride
+                ?? defaultSocketEvent,
+            payload:
+                GameActivityMutationPayload(
+                    action:
+                        socketAction,
+                    node:
+                        updatedNode
+                )
+        )
+    }
+
+
     func recordApplicationAction(
         _ name: ApplicationActionName,
         metadata: [String: String] = [:]
@@ -4389,7 +6310,9 @@ private extension SocketManager {
         // Application-action events are observability/UI-intent events.
         // Authoritative mutations use their typed events below. Avoid emitting
         // every search keystroke; submitSearch() sends the actual search query.
-        if name != .searchChanged {
+        if name != .searchChanged
+            && name != .addMealBrowseQueryChanged
+            && name != .addWorkoutBrowseQueryChanged {
 
             emitEvent(
                 event:

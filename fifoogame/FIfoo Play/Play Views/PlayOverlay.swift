@@ -25,12 +25,6 @@ struct PlayOverlay: View {
     let onResumeExercise: () -> Void
     let onExitWorkout: () -> Void
 
-    /// Optional ActivityWorkout schedule control. It is supplied only when
-    /// Fifoo Play was opened from an independent ActivityWorkout stop. Workout
-    /// browsing now lives in WorkoutStatusOverlay rather than over exercises.
-    let scheduledWorkoutTime: String?
-    let onEditScheduledWorkoutTime: (() -> Void)?
-
     @State private var showProgressView = false
     
     @State private var showInstructionsView = false
@@ -47,10 +41,6 @@ struct PlayOverlay: View {
             // MARK: Header
 
             header
-
-            if onEditScheduledWorkoutTime != nil {
-                workoutActivityControls
-            }
 
             // MARK: Exercise Details
 
@@ -147,41 +137,6 @@ private extension PlayOverlay {
         }
         .padding(.horizontal, 25)
         .padding(.bottom, 16)
-    }
-}
-
-
-// MARK: - ActivityWorkout Schedule Control
-
-private extension PlayOverlay {
-
-    var workoutActivityControls: some View {
-        HStack(spacing: 10) {
-            if let onEditScheduledWorkoutTime {
-                Button {
-                    onEditScheduledWorkoutTime()
-                } label: {
-                    Label(
-                        scheduledWorkoutTime?.isEmpty == false
-                        ? (scheduledWorkoutTime ?? "Workout Time")
-                        : "Workout Time",
-                        systemImage: "clock.fill"
-                    )
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(
-                        .black.opacity(0.32),
-                        in: Capsule()
-                    )
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 25)
-        .padding(.bottom, 10)
     }
 }
 

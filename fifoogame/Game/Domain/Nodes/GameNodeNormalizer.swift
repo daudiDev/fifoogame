@@ -283,9 +283,9 @@ enum GameNodeNormalizer {
                     workout.website = cleaned.isEmpty ? nil : cleaned
                 }
 
-                if var imageURLs = workout.imageURLs {
-                    imageURLs = imageURLs.map { clean($0) }.filter { !$0.isEmpty }
-                    workout.imageURLs = imageURLs.isEmpty ? nil : imageURLs
+                if let imageURLs = workout.imageURLs {
+                    let cleanedURLs = uniqueMediaURLs(imageURLs)
+                    workout.imageURLs = cleanedURLs.isEmpty ? nil : cleanedURLs
                 }
 
                 if let status = workout.workoutStatus {
@@ -343,14 +343,14 @@ enum GameNodeNormalizer {
                         task.description
                     )
 
-                if var imageURLs = task.imageURLs {
-                    imageURLs = imageURLs.map { clean($0) }.filter { !$0.isEmpty }
-                    task.imageURLs = imageURLs.isEmpty ? nil : imageURLs
+                if let imageURLs = task.imageURLs {
+                    let cleanedURLs = uniqueMediaURLs(imageURLs)
+                    task.imageURLs = cleanedURLs.isEmpty ? nil : cleanedURLs
                 }
 
-                if var videoURLs = task.videoURLs {
-                    videoURLs = videoURLs.map { clean($0) }.filter { !$0.isEmpty }
-                    task.videoURLs = videoURLs.isEmpty ? nil : videoURLs
+                if let videoURLs = task.videoURLs {
+                    let cleanedURLs = uniqueMediaURLs(videoURLs)
+                    task.videoURLs = cleanedURLs.isEmpty ? nil : cleanedURLs
                 }
 
                 if var copyStatus = task.copyStatus {
@@ -376,6 +376,29 @@ enum GameNodeNormalizer {
                     cleaned.isEmpty
                     ? nil
                     : cleaned
+            }
+
+
+            let activityType =
+                content.activityType
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+
+            switch activityType {
+            case "meal":
+                if let imageURL = content.meal?.imageURL {
+                    content.image = .remote(urlString: imageURL)
+                }
+
+            case "workout":
+                if let imageURL = content.workout?.imageURLs?.first {
+                    content.image = .remote(urlString: imageURL)
+                }
+
+            default:
+                if let imageURL = content.task?.imageURLs?.first {
+                    content.image = .remote(urlString: imageURL)
+                }
             }
 
 
@@ -423,14 +446,10 @@ enum GameNodeNormalizer {
                 snapshot.postTaskID = clean(snapshot.postTaskID)
 
                 snapshot.postImageURLs =
-                    snapshot.postImageURLs
-                        .map { clean($0) }
-                        .filter { !$0.isEmpty && $0.lowercased() != "none" }
+                    uniqueMediaURLs(snapshot.postImageURLs)
 
                 snapshot.postVideoURLs =
-                    snapshot.postVideoURLs
-                        .map { clean($0) }
-                        .filter { !$0.isEmpty && $0.lowercased() != "none" }
+                    uniqueMediaURLs(snapshot.postVideoURLs)
 
                 snapshot.tags =
                     snapshot.tags
@@ -457,11 +476,7 @@ enum GameNodeNormalizer {
                                 }
                     )
 
-                snapshot.postMediaCount =
-                    max(
-                        0,
-                        snapshot.postMediaCount
-                    )
+                synchronizePostMediaMetadata(&snapshot)
 
                 snapshot.postResponseCount =
                     max(
@@ -513,6 +528,8 @@ enum GameNodeNormalizer {
                             urlString:
                                 imageURL
                         )
+                } else {
+                    content.image = nil
                 }
 
 
@@ -557,6 +574,12 @@ enum GameNodeNormalizer {
             }
 
 
+            if let urlString = content.urlString,
+               content.mediaType == .image || content.mediaType == .gif {
+                content.image = .remote(urlString: urlString)
+            }
+
+
             updated.content =
                 .media(
                     content
@@ -585,6 +608,92 @@ enum GameNodeNormalizer {
 
 
         return updated
+    }
+
+
+    private static func uniqueMediaURLs(
+        _ values: [String]
+    ) -> [String] {
+
+        var seen = Set<String>()
+
+        return values.compactMap { value in
+            let cleaned = clean(value)
+
+            guard
+                !cleaned.isEmpty,
+                cleaned.lowercased() != "none",
+                seen.insert(cleaned).inserted
+            else {
+                return nil
+            }
+
+            return cleaned
+        }
+    }
+
+
+    private static func synchronizePostMediaMetadata(
+        _ snapshot: inout PostNodeSnapshot
+    ) {
+
+        let gifCount = snapshot.postGIFMedia.isEmpty ? 0 : 1
+
+        snapshot.postMediaCount =
+            snapshot.postImageURLs.count
+            + snapshot.postVideoURLs.count
+            + gifCount
+
+        if let firstImage = snapshot.postImageURLs.first {
+            snapshot.postMainMediaURL = firstImage
+            snapshot.postMainMediaType = "image"
+            return
+        }
+
+        if let firstVideo = snapshot.postVideoURLs.first {
+            snapshot.postMainMediaURL = firstVideo
+            snapshot.postMainMediaType = "video"
+            return
+        }
+
+        if !snapshot.postGIFMedia.isEmpty {
+            snapshot.postMainMediaURL = preferredGIFURL(snapshot.postGIFMedia) ?? ""
+            snapshot.postMainMediaType = "gif"
+            return
+        }
+
+        snapshot.postMainMediaURL = ""
+        snapshot.postMainMediaType = ""
+    }
+
+
+    private static func preferredGIFURL(
+        _ metadata: [String: String]
+    ) -> String? {
+
+        for key in [
+            "url",
+            "gifURL",
+            "gif_url",
+            "originalURL",
+            "original_url"
+        ] {
+            if let value = metadata[key] {
+                let cleaned = clean(value)
+                if !cleaned.isEmpty && cleaned.lowercased() != "none" {
+                    return cleaned
+                }
+            }
+        }
+
+        if let id = metadata["id"] {
+            let cleanedID = clean(id)
+            if !cleanedID.isEmpty && cleanedID.lowercased() != "none" {
+                return "https://media.giphy.com/media/\(cleanedID)/giphy.gif"
+            }
+        }
+
+        return nil
     }
 
 

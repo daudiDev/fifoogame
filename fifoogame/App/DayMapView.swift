@@ -56,10 +56,6 @@ struct DayMapView: View {
         GameNodeID?
 
 
-    @State
-    private var presentedIndependentWorkoutTimeNodeID:
-        GameNodeID?
-
 
     @State
     private var presentedMediaNodeID:
@@ -80,10 +76,6 @@ struct DayMapView: View {
     private var presentedRouteTarget:
         RouteInteractionTarget?
     
-    @State
-    private var isShowingRouteBuilder =
-        false
-
 
     // MARK: - Node Actions
 
@@ -261,12 +253,58 @@ struct DayMapView: View {
                        activityContent.workout?.resolvedWorkoutType == .independent {
 
                         PlayView(
-                            scheduledWorkoutTime: activityContent.startTime,
-                            onEditScheduledWorkoutTime: {
-                                presentedIndependentWorkoutTimeNodeID =
-                                    workoutNodeID
+                            scheduledWorkoutStartTime:
+                                activityContent.startTime,
+                            scheduledWorkoutEndTime:
+                                activityContent.endTime,
+                            scheduledWorkoutLocation:
+                                activityContent.location.isEmpty
+                                ? activityContent.workout?.location
+                                : activityContent.location,
+                            onUpdateScheduledWorkoutTimes: { startTime, endTime in
+                                guard let currentNode =
+                                    store.gameNode(id: workoutNodeID)
+                                else {
+                                    return
+                                }
+
+                                let updated =
+                                    activityWorkoutUpdatingIndependentSchedule(
+                                        currentNode,
+                                        startTime: startTime,
+                                        endTime: endTime,
+                                        roadGraph: store.roadGraph
+                                    )
+
+                                socketManager.rescheduleIndependentActivityWorkout(
+                                    updated
+                                )
+                            },
+                            onUpdateScheduledWorkoutLocation: { location in
+                                guard let currentNode =
+                                    store.gameNode(id: workoutNodeID)
+                                else {
+                                    return
+                                }
+
+                                let updated =
+                                    activityWorkoutUpdatingIndependentLocation(
+                                        currentNode,
+                                        to: location
+                                    )
+
+                                socketManager.updateActivityWorkout(
+                                    updated
+                                )
                             },
                             onBrowseWorkoutClasses: {
+                                socketManager.activityWorkoutBrowseOpened(
+                                    nodeID:
+                                        workoutNodeID,
+                                    classesOnly:
+                                        true
+                                )
+
                                 presentedIndependentWorkoutClassBrowseNodeID =
                                     workoutNodeID
                             }
@@ -293,11 +331,18 @@ struct DayMapView: View {
                 initialCoordinate:
                     presentation.coordinate,
                 roadGraph:
-                    store.roadGraph
-            ) { newNode in
+                    store.roadGraph,
+                canAttachToExistingPath:
+                    store.routeState.hasChosenFutureRoute
+                    &&
+                    presentation.coordinate.time
+                        > store.currentDayTime
+            ) { newNode, attachToExistingPath in
 
                 socketManager.addGameNode(
-                    newNode
+                    newNode,
+                    attachToExistingPath:
+                        attachToExistingPath
                 )
 
                 addNodePresentation =
@@ -369,13 +414,6 @@ struct DayMapView: View {
                 routeInspectorSheet
         )
         
-        .sheet(
-            isPresented:
-                $isShowingRouteBuilder,
-            content:
-                routeBuilderSheet
-        )
-
         // MARK: - Appear
 
         .onAppear {
@@ -577,21 +615,12 @@ struct DayMapView: View {
         )
         
         .onChange(
-            of:
-                store.futureRoutePreview,
-            initial:
-                false,
-            futureRoutePreviewDidChange
-        )
-
-        .onChange(
             of: socketManager.isShowingPlay
         ) { _, isShowing in
             if !isShowing {
                 activeIndependentWorkoutNodeID = nil
                 presentedIndependentWorkoutBrowseNodeID = nil
                 presentedIndependentWorkoutClassBrowseNodeID = nil
-                presentedIndependentWorkoutTimeNodeID = nil
             }
         }
         
@@ -633,27 +662,6 @@ struct DayMapView: View {
                         nodeID: nodeID
                     )
                     presentedIndependentWorkoutClassBrowseNodeID = nil
-                }
-            }
-        }
-
-        .sheet(
-            item:
-                $presentedIndependentWorkoutTimeNodeID
-        ) { nodeID in
-
-            if let node = store.gameNode(id: nodeID) {
-                ActivityWorkoutScheduleTimePickerSheet(
-                    node: node
-                ) { newTime in
-                    let updated =
-                        activityWorkoutUpdatingIndependentSchedule(
-                            node,
-                            to: newTime,
-                            roadGraph: store.roadGraph
-                        )
-
-                    socketManager.updateGameNode(updated)
                 }
             }
         }
@@ -739,15 +747,18 @@ struct DayMapView: View {
                     node: node,
                     roadGraph: store.roadGraph,
                     onUpdate: { updatedNode in
-                        socketManager.updateGameNode(updatedNode)
+                        socketManager.updateActivityMeal(
+                            updatedNode
+                        )
                     },
                     onDelete: {
-                        socketManager.deleteGameNode(id: node.id)
+                        socketManager.skipActivityMealAndRemoveStop(
+                            node
+                        )
                     },
                     onCompleted: { completedNode in
-                        socketManager.handleActivityNodeAction(
-                            .completed,
-                            node: completedNode
+                        socketManager.completeActivityMeal(
+                            completedNode
                         )
                         onActivityAction?(
                             .completed,
@@ -768,7 +779,46 @@ struct DayMapView: View {
                     node: node,
                     roadGraph: store.roadGraph,
                     onUpdate: { updatedNode in
-                        socketManager.updateGameNode(updatedNode)
+                        if case let .activity(content) = updatedNode.content,
+                           let updatedWorkout = content.workout {
+
+                            let status =
+                                updatedWorkout.workoutStatus?
+                                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                                    .lowercased()
+                                ?? ""
+
+                            if status == "checked in" {
+
+                                socketManager.checkInActivityWorkoutClass(
+                                    updatedNode
+                                )
+
+                            } else if case let .activity(originalContent) = node.content,
+                                      originalContent.workout?.workoutID
+                                        != updatedWorkout.workoutID {
+
+                                socketManager.selectActivityWorkout(
+                                    updatedNode,
+                                    selectedWorkoutID:
+                                        updatedWorkout.workoutID,
+                                    selectedWorkoutType:
+                                        updatedWorkout.resolvedWorkoutType
+                                )
+
+                            } else {
+
+                                socketManager.updateActivityWorkout(
+                                    updatedNode
+                                )
+                            }
+
+                        } else {
+
+                            socketManager.updateActivityWorkout(
+                                updatedNode
+                            )
+                        }
                     },
                     onSwitchToIndependent: { updatedNode in
                         presentedActivityWorkoutNodeID = nil
@@ -788,22 +838,40 @@ struct DayMapView: View {
                     node: node,
                     roadGraph: store.roadGraph,
                     onUpdate: { updatedNode in
-                        socketManager.updateGameNode(updatedNode)
+                        if updatedNode.time != node.time {
+                            socketManager.rescheduleActivityTask(
+                                updatedNode
+                            )
+                        } else {
+                            socketManager.updateActivityTask(
+                                updatedNode
+                            )
+                        }
+                    },
+                    onDelete: {
+                        socketManager.deleteActivityTask(
+                            node
+                        )
+                        presentedActivityTaskNodeID = nil
                     },
                     onSkip: { skippedNode in
-                        socketManager.handleActivityNodeAction(
-                            .skip,
-                            node: skippedNode
+                        // Skipping an ActivityTask removes the stop from the
+                        // Day Map/path, so persist it as an authoritative node
+                        // deletion rather than as a retained "Skipped" node.
+                        socketManager.deleteGameNode(
+                            id:
+                                skippedNode.id
                         )
+                        presentedActivityTaskNodeID = nil
+
                         onActivityAction?(
                             .skip,
                             skippedNode
                         )
                     },
                     onCompleted: { completedNode in
-                        socketManager.handleActivityNodeAction(
-                            .completed,
-                            node: completedNode
+                        socketManager.completeActivityTask(
+                            completedNode
                         )
                         onActivityAction?(
                             .completed,
@@ -897,78 +965,6 @@ struct DayMapView: View {
             }
         }
         
-    }
-    
-    @ViewBuilder
-    private var routeControl:
-        some View {
-
-        if
-            store
-                .routeState
-                .hasChosenFutureRoute
-        {
-
-            Menu {
-
-                Button {
-
-                    openCurrentRouteBuilder()
-
-                } label: {
-
-                    Label(
-                        "Edit Current Path",
-                        systemImage:
-                            "pencil"
-                    )
-                }
-
-
-                Button {
-
-                    openNewRouteBuilder()
-
-                } label: {
-
-                    Label(
-                        "Build New Path",
-                        systemImage:
-                            "plus"
-                    )
-                }
-
-
-            } label: {
-
-                Label(
-                    "Path",
-                    systemImage:
-                        "point.topleft.down.to.point.bottomright.curvepath"
-                )
-            }
-            .buttonStyle(
-                .borderedProminent
-            )
-
-        } else {
-
-            Button {
-
-                openNewRouteBuilder()
-
-            } label: {
-
-                Label(
-                    "Path",
-                    systemImage:
-                        "point.topleft.down.to.point.bottomright.curvepath"
-                )
-            }
-            .buttonStyle(
-                .borderedProminent
-            )
-        }
     }
     
 }
@@ -2021,76 +2017,6 @@ private extension DayMapView {
 
 private extension DayMapView {
 
-    func openNewRouteBuilder() {
-
-        socketManager
-            .beginNewFutureRouteDraft()
-
-
-        isShowingRouteBuilder =
-            true
-    }
-}
-
-private extension DayMapView {
-
-    func routeBuilderSheet() -> some View {
-
-        FutureRouteBuilderView(
-            store:
-                store
-        )
-    }
-}
-
-private extension DayMapView {
-
-    func futureRoutePreviewDidChange(
-        _ oldPreview:
-            FutureRoutePreview?,
-        _ newPreview:
-            FutureRoutePreview?
-    ) {
-
-        // Keep preview and live route layers synchronized through selection,
-        // replanning, cancellation and commit. A successful commit publishes
-        // routeState and then clears futureRoutePreview; this helper is safe
-        // regardless of which SwiftUI observation fires first.
-        syncRouteLayers()
-    }
-}
-
-
-private extension DayMapView {
-
-    func openCurrentRouteBuilder() {
-
-        guard
-            !isShowingRouteBuilder
-        else {
-
-            return
-        }
-
-
-        let succeeded =
-            socketManager
-                .beginEditingChosenFutureRoute()
-
-
-        guard succeeded else {
-            return
-        }
-
-
-        isShowingRouteBuilder =
-            true
-    }
-    
-}
-
-private extension DayMapView {
-
     /// Synchronizes the live and temporary route layers as one visual unit.
     /// This is deliberately idempotent so route commits can publish several
     /// store properties without briefly leaving stale preview geometry behind.
@@ -2106,16 +2032,10 @@ private extension DayMapView {
         )
 
 
-        if store.futureRoutePreview != nil {
-
-            scene.renderRoutePreview(
-                store.routePreviewRenderState
-            )
-
-        } else {
-
-            scene.clearRoutePreview()
-        }
+        // Route construction/preview is backend-owned in Pass 5.43.
+        // The live chosen/alternate layers above are the only production route
+        // geometry rendered by DayMapView.
+        scene.clearRoutePreview()
     }
 }
 
@@ -2445,7 +2365,9 @@ private extension DayMapView {
         activeIndependentWorkoutNodeID = node.id
 
         socketManager.activateIndependentWorkout(
-            from: workout
+            from: workout,
+            activityNodeID:
+                node.id
         )
 
         socketManager.openPlay()
@@ -2468,7 +2390,13 @@ private extension DayMapView {
                 roadGraph: store.roadGraph
             )
 
-        socketManager.updateGameNode(updated)
+        socketManager.selectActivityWorkout(
+            updated,
+            selectedWorkoutID:
+                option.summary.workoutID,
+            selectedWorkoutType:
+                option.summary.resolvedWorkoutType
+        )
         presentedIndependentWorkoutBrowseNodeID = nil
         presentedIndependentWorkoutClassBrowseNodeID = nil
 
@@ -2476,7 +2404,9 @@ private extension DayMapView {
         case .independent:
             activeIndependentWorkoutNodeID = nodeID
             socketManager.activateIndependentWorkout(
-                from: option.summary
+                from: option.summary,
+                activityNodeID:
+                    nodeID
             )
 
         case .guidedClass:

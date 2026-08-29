@@ -447,6 +447,7 @@ private extension ActivityMealExperienceView {
                 // header and controls comfortably away from device edges.
                 VStack(spacing: welcomeVerticalSpacing(for: geometry.size.height)) {
                     welcomeHeader
+                    welcomeStatusBadge
                     editableTimeRow
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -546,6 +547,77 @@ private extension ActivityMealExperienceView {
     }
 
 
+    var resolvedWelcomeStatus: String {
+        let storedStatus =
+            mealContent?.status
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            ?? ""
+
+        if storedStatus == "completed" {
+            return "Completed"
+        }
+
+        if storedStatus == "skipped" {
+            return "Skipped"
+        }
+
+        if storedStatus == "confirmed" || mealConfirmed {
+            return "Confirmed"
+        }
+
+        return "Suggested"
+    }
+
+
+    var welcomeStatusBadge: some View {
+        HStack(spacing: 8) {
+            Image(systemName: welcomeStatusSystemImage)
+                .font(.caption.weight(.bold))
+
+            Text(resolvedWelcomeStatus)
+                .font(.caption.weight(.bold))
+                .textCase(.uppercase)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            welcomeStatusColor.opacity(0.34),
+            in: Capsule()
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+
+    var welcomeStatusSystemImage: String {
+        switch resolvedWelcomeStatus {
+        case "Confirmed":
+            return "checkmark.seal.fill"
+        case "Skipped":
+            return "forward.end.fill"
+        case "Completed":
+            return "checkmark.circle.fill"
+        default:
+            return "sparkles"
+        }
+    }
+
+
+    var welcomeStatusColor: Color {
+        switch resolvedWelcomeStatus {
+        case "Confirmed":
+            return .blue
+        case "Skipped":
+            return .orange
+        case "Completed":
+            return .green
+        default:
+            return .purple
+        }
+    }
+
+
     var editableTimeRow: some View {
 
         HStack(spacing: 12) {
@@ -631,6 +703,8 @@ private extension ActivityMealExperienceView {
                     Spacer()
 
                     Button("Done") {
+                        persistDraft()
+
                         withAnimation(.snappy(duration: 0.22)) {
                             activeWelcomeTimePicker = nil
                         }
@@ -703,8 +777,10 @@ private extension ActivityMealExperienceView {
 
                 if target == .start {
                     startTimeBinding.wrappedValue = formatted
+                    keepMealEndTimeAfterStartTime()
                 } else {
                     endTimeBinding.wrappedValue = formatted
+                    keepMealStartTimeBeforeEndTime()
                 }
             }
         )
@@ -945,6 +1021,12 @@ private extension ActivityMealExperienceView {
 
                 Button {
                     mealConfirmed.toggle()
+                    SocketManager.shared.activityMealConfirmationChanged(
+                        nodeID:
+                            draft.id,
+                        isConfirmed:
+                            mealConfirmed
+                    )
                     persistDraft()
                 } label: {
                     HStack(spacing: 10) {
@@ -960,6 +1042,7 @@ private extension ActivityMealExperienceView {
                 .buttonStyle(.plain)
 
                 Button {
+                    SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .meals)
                     presentedSheet = .browseMeals
                 } label: {
                     Label("Browse Meals", systemImage: "magnifyingglass")
@@ -973,6 +1056,12 @@ private extension ActivityMealExperienceView {
                 ForEach(ActivityMealSource.allCases) { option in
                     Button {
                         source = option
+                        SocketManager.shared.activityMealSourceSelected(
+                            nodeID:
+                                draft.id,
+                            source:
+                                option
+                        )
                         rebuildForSourceChange()
                         persistDraft()
                     } label: {
@@ -1017,6 +1106,7 @@ private extension ActivityMealExperienceView {
 
                 HStack(spacing: 10) {
                     Button {
+                        SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .recipeDetails)
                         presentedSheet = .recipeDetails
                     } label: {
                         Label("View", systemImage: "doc.text.magnifyingglass")
@@ -1025,6 +1115,7 @@ private extension ActivityMealExperienceView {
                     .buttonStyle(.bordered)
 
                     Button {
+                        SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .recipes)
                         presentedSheet = .browseRecipes
                     } label: {
                         Label("Browse Recipes", systemImage: "books.vertical.fill")
@@ -1044,6 +1135,7 @@ private extension ActivityMealExperienceView {
                     .multilineTextAlignment(.center)
 
                 Button {
+                    SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .ingredients)
                     presentedSheet = .ingredients
                 } label: {
                     Label("View / Edit Ingredients", systemImage: "pencil")
@@ -1053,6 +1145,13 @@ private extension ActivityMealExperienceView {
 
                 Toggle("I already have the ingredients", isOn: $ingredientsReady)
                     .onChange(of: ingredientsReady) { ready in
+                        SocketManager.shared.activityMealIngredientsReadyChanged(
+                            nodeID:
+                                draft.id,
+                            isReady:
+                                ready
+                        )
+
                         if ready {
                             groceriesNeeded = false
                         }
@@ -1061,7 +1160,13 @@ private extension ActivityMealExperienceView {
 
                 Toggle("Source missing ingredients", isOn: $groceriesNeeded)
                     .disabled(ingredientsReady)
-                    .onChange(of: groceriesNeeded) { _ in
+                    .onChange(of: groceriesNeeded) { needed in
+                        SocketManager.shared.activityMealGroceriesNeededChanged(
+                            nodeID:
+                                draft.id,
+                            isNeeded:
+                                needed
+                        )
                         rebuildForSourceChange()
                     }
             }
@@ -1082,6 +1187,7 @@ private extension ActivityMealExperienceView {
                 }
 
                 Button {
+                    SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .shoppingList)
                     presentedSheet = .shoppingList
                 } label: {
                     Label("Shopping List", systemImage: "checklist")
@@ -1090,6 +1196,7 @@ private extension ActivityMealExperienceView {
                 .buttonStyle(.borderedProminent)
 
                 Button {
+                    SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .ingredientStores)
                     presentedSheet = .ingredientStores
                 } label: {
                     Label("Relevant Stores", systemImage: "storefront.fill")
@@ -1146,6 +1253,7 @@ private extension ActivityMealExperienceView {
                     .foregroundStyle(venueAvailable ? Color.green : Color.orange)
 
                 Button {
+                    SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .venues)
                     presentedSheet = .venues
                 } label: {
                     Label("Browse Restaurants / Stores", systemImage: "magnifyingglass")
@@ -1178,6 +1286,12 @@ private extension ActivityMealExperienceView {
                     ForEach(ActivityMealFulfillmentMode.allCases) { mode in
                         Button {
                             fulfillmentMode = mode
+                            SocketManager.shared.activityMealFulfillmentSelected(
+                                nodeID:
+                                    draft.id,
+                                mode:
+                                    mode
+                            )
                             persistDraft()
                         } label: {
                             VStack(spacing: 7) {
@@ -1206,6 +1320,20 @@ private extension ActivityMealExperienceView {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+                    .simultaneousGesture(
+                        TapGesture()
+                            .onEnded {
+                                SocketManager.shared.activityMealExternalLinkOpened(
+                                    nodeID:
+                                        draft.id,
+                                    destination:
+                                        fulfillmentLinkTitle(
+                                            for:
+                                                fulfillmentMode
+                                        )
+                                )
+                            }
+                    )
                 }
             }
 
@@ -1219,6 +1347,7 @@ private extension ActivityMealExperienceView {
                     .multilineTextAlignment(.center)
 
                 Button {
+                    SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .friends)
                     presentedSheet = .friends
                 } label: {
                     Label("Choose Friend / Host", systemImage: "person.2.circle.fill")
@@ -1233,6 +1362,14 @@ private extension ActivityMealExperienceView {
                     .font(.system(size: 44))
 
                 Toggle("Invitation confirmed", isOn: $invitationConfirmed)
+                    .onChange(of: invitationConfirmed) { _, isConfirmed in
+                        SocketManager.shared.activityMealInvitationChanged(
+                            nodeID:
+                                draft.id,
+                            isConfirmed:
+                                isConfirmed
+                        )
+                    }
 
                 Text(invitationConfirmed ? "Time and location confirmed." : "Contact the host before traveling.")
                     .font(.caption)
@@ -1240,6 +1377,7 @@ private extension ActivityMealExperienceView {
 
                 if selectedFriend?.chatAvailable == true {
                     Button {
+                        SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .friendChat)
                         presentedSheet = .friendChat
                     } label: {
                         Label("Chat with \(hostName)", systemImage: "message.fill")
@@ -1260,6 +1398,7 @@ private extension ActivityMealExperienceView {
                     .lineLimit(3)
 
                 Button {
+                    SocketManager.shared.activityMealResourceOpened(nodeID: draft.id, resource: .contributionItems)
                     presentedSheet = .contributionItems
                 } label: {
                     Label("View / Edit Items", systemImage: "square.and.pencil")
@@ -1275,6 +1414,24 @@ private extension ActivityMealExperienceView {
 
                 TextField("Meal address", text: $eventLocation)
                     .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        let hasAddress =
+                            !eventLocation
+                                .trimmingCharacters(
+                                    in:
+                                        .whitespacesAndNewlines
+                                )
+                                .isEmpty
+
+                        SocketManager.shared.activityMealAddressChanged(
+                            nodeID:
+                                draft.id,
+                            hasAddress:
+                                hasAddress
+                        )
+
+                        persistDraft()
+                    }
 
                 if !eventLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     HStack(spacing: 10) {
@@ -1284,6 +1441,17 @@ private extension ActivityMealExperienceView {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
+                            .simultaneousGesture(
+                                TapGesture()
+                                    .onEnded {
+                                        SocketManager.shared.activityMealExternalLinkOpened(
+                                            nodeID:
+                                                draft.id,
+                                            destination:
+                                                "Apple Maps"
+                                        )
+                                    }
+                            )
                         }
 
                         if let googleURL = googleMapsURL(for: eventLocation) {
@@ -1292,6 +1460,17 @@ private extension ActivityMealExperienceView {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
+                            .simultaneousGesture(
+                                TapGesture()
+                                    .onEnded {
+                                        SocketManager.shared.activityMealExternalLinkOpened(
+                                            nodeID:
+                                                draft.id,
+                                            destination:
+                                                "Google Maps"
+                                        )
+                                    }
+                            )
                         }
                     }
                 }
@@ -1627,6 +1806,13 @@ private extension ActivityMealExperienceView {
 private extension ActivityMealExperienceView {
 
     func completeCurrentStep() {
+        SocketManager.shared.activityMealStepCompleted(
+            nodeID:
+                draft.id,
+            stepID:
+                currentStep.id
+        )
+
         completedStepIDs.insert(currentStep.id)
         skippedStepIDs.remove(currentStep.id)
 
@@ -1645,6 +1831,13 @@ private extension ActivityMealExperienceView {
     func skipCurrentStepForward() {
         guard currentStepIndex < actionSteps.count - 1 else { return }
 
+        SocketManager.shared.activityMealStepSkipped(
+            nodeID:
+                draft.id,
+            stepID:
+                currentStep.id
+        )
+
         if !completedStepIDs.contains(currentStep.id) {
             skippedStepIDs.insert(currentStep.id)
         }
@@ -1657,6 +1850,13 @@ private extension ActivityMealExperienceView {
 
 
     func moveBackward() {
+        SocketManager.shared.activityMealStepMovedBack(
+            nodeID:
+                draft.id,
+            stepID:
+                currentStep.id
+        )
+
         guard currentStepIndex > 0 else {
             withAnimation(.snappy(duration: 0.24)) {
                 experienceState = .welcome
@@ -1730,13 +1930,29 @@ private extension ActivityMealExperienceView {
 
 
     func persistDraft() {
+        normalizeMealScheduleBeforePersisting()
+
         updateMealContent { content in
+            let storedStatus =
+                content.status
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+
+            if storedStatus != "completed",
+               storedStatus != "skipped" {
+                content.status =
+                    mealConfirmed
+                    ? "Confirmed"
+                    : "Suggested"
+            }
+
             if var meal = content.meal {
                 meal.title = suggestedMealName
                 meal.executionPlan = currentExecutionPlan
                 content.meal = meal
             }
         }
+
         synchronizeNodeTimeFromStartTime()
         onUpdate(draft)
     }
@@ -1796,6 +2012,79 @@ private extension ActivityMealExperienceView {
 
         currentStepIndex = index
         pendingRestoredStepID = nil
+    }
+
+
+    func keepMealEndTimeAfterStartTime() {
+        guard let start =
+                parseActivityTime(
+                    startTimeBinding.wrappedValue
+                )
+        else {
+            return
+        }
+
+        let currentEnd =
+            parseActivityTime(
+                endTimeBinding.wrappedValue
+            )
+
+        if let currentEnd,
+           currentEnd.secondsFromMidnight
+            >= start.secondsFromMidnight {
+            return
+        }
+
+        let correctedEnd =
+            DayTime(
+                secondsFromMidnight:
+                    min(
+                        start.secondsFromMidnight + 3_600,
+                        DayTime.secondsPerDay - 60
+                    )
+            )
+
+        endTimeBinding.wrappedValue =
+            correctedEnd.displayClockString
+    }
+
+
+    func keepMealStartTimeBeforeEndTime() {
+        guard let end =
+                parseActivityTime(
+                    endTimeBinding.wrappedValue
+                )
+        else {
+            return
+        }
+
+        let currentStart =
+            parseActivityTime(
+                startTimeBinding.wrappedValue
+            )
+
+        if let currentStart,
+           currentStart.secondsFromMidnight
+            <= end.secondsFromMidnight {
+            return
+        }
+
+        let correctedStart =
+            DayTime(
+                secondsFromMidnight:
+                    max(
+                        end.secondsFromMidnight - 3_600,
+                        0
+                    )
+            )
+
+        startTimeBinding.wrappedValue =
+            correctedStart.displayClockString
+    }
+
+
+    func normalizeMealScheduleBeforePersisting() {
+        keepMealEndTimeAfterStartTime()
     }
 
 
@@ -2207,6 +2496,15 @@ private extension ActivityMealExperienceView {
     func selectMeal(
         _ meal: ActivityMealBrowseChoice
     ) {
+        SocketManager.shared.activityMealSelectedMeal(
+            nodeID:
+                draft.id,
+            mealID:
+                meal.id,
+            title:
+                meal.title
+        )
+
         suggestedMealName = meal.title
         mealConfirmed = true
 
@@ -2223,6 +2521,15 @@ private extension ActivityMealExperienceView {
     func selectRecipe(
         _ recipe: ActivityMealRecipeOption
     ) {
+        SocketManager.shared.activityMealRecipeSelected(
+            nodeID:
+                draft.id,
+            recipeID:
+                recipe.id,
+            title:
+                recipe.title
+        )
+
         recipeName = recipe.title
         ingredients = recipe.ingredients
         shoppingList = recipe.ingredients
@@ -2234,6 +2541,15 @@ private extension ActivityMealExperienceView {
     func selectIngredientStore(
         _ store: ActivityMealStoreOption
     ) {
+        SocketManager.shared.activityMealIngredientStoreSelected(
+            nodeID:
+                draft.id,
+            storeID:
+                store.id,
+            name:
+                store.name
+        )
+
         ingredientStoreName = store.name
         persistDraft()
     }
@@ -2242,6 +2558,15 @@ private extension ActivityMealExperienceView {
     func selectVenue(
         _ venue: ActivityMealVenueOption
     ) {
+        SocketManager.shared.activityMealVenueSelected(
+            nodeID:
+                draft.id,
+            venueID:
+                venue.id,
+            name:
+                venue.name
+        )
+
         venueName = venue.name
         venueLocation = venue.address
         venueHours = venue.hours
@@ -2253,6 +2578,15 @@ private extension ActivityMealExperienceView {
     func selectFriend(
         _ friend: ActivityMealFriendOption
     ) {
+        SocketManager.shared.activityMealHostSelected(
+            nodeID:
+                draft.id,
+            friendID:
+                friend.id,
+            name:
+                friend.name
+        )
+
         selectedHostID = friend.id
         hostName = friend.name
         persistDraft()
@@ -2294,6 +2628,12 @@ private extension ActivityMealExperienceView {
                 items: $ingredients
             )
             .onDisappear {
+                SocketManager.shared.activityMealIngredientsChanged(
+                    nodeID:
+                        draft.id,
+                    count:
+                        ingredients.count
+                )
                 persistDraft()
             }
 
@@ -2305,6 +2645,12 @@ private extension ActivityMealExperienceView {
                 items: $shoppingList
             )
             .onDisappear {
+                SocketManager.shared.activityMealShoppingListChanged(
+                    nodeID:
+                        draft.id,
+                    count:
+                        shoppingList.count
+                )
                 persistDraft()
             }
 
@@ -2361,6 +2707,12 @@ private extension ActivityMealExperienceView {
             )
             .onDisappear {
                 contribution = contributionItems.joined(separator: ", ")
+                SocketManager.shared.activityMealContributionChanged(
+                    nodeID:
+                        draft.id,
+                    itemCount:
+                        contributionItems.count
+                )
                 persistDraft()
             }
         }

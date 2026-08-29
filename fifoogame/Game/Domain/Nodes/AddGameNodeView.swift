@@ -12,24 +12,55 @@ import PhotosUI
 import AVKit
 import Vision
 import UniformTypeIdentifiers
+import ImageIO
 
 
 struct AddGameNodeView: View {
 
     let initialCoordinate: MapCoordinate
     let roadGraph: RoadGraph
-    let onAdd: (GameMapNode) -> Void
+    let canAttachToExistingPath: Bool
+    let onAdd: (GameMapNode, Bool) -> Void
+
+    @State private var attachToExistingPath = false
 
     var body: some View {
         NavigationStack {
             VStack {
                 HStack {
                     Spacer()
-                    Text("Add Stop to Path")
+                    Text("Add Stop")
                         .font(.title)
                         .foregroundStyle(.white)
                         .padding(.vertical)
                     Spacer()
+                }
+
+                if canAttachToExistingPath {
+                    Toggle(
+                        "Attach new stop to current path",
+                        isOn: $attachToExistingPath
+                    )
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .tint(.green)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(
+                        .white.opacity(0.08),
+                        in: RoundedRectangle(
+                            cornerRadius: 16,
+                            style: .continuous
+                        )
+                    )
+                    .padding(.horizontal)
+
+                    Text(
+                        "Fifoo will update the current and alternate paths to include this stop."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.66))
+                    .padding(.horizontal, 28)
                 }
 
                 Spacer()
@@ -72,7 +103,14 @@ struct AddGameNodeView: View {
                     addType: addType,
                     initialCoordinate: initialCoordinate,
                     roadGraph: roadGraph,
-                    onAdd: onAdd
+                    onAdd: { node in
+                        onAdd(
+                            node,
+                            canAttachToExistingPath
+                            &&
+                            attachToExistingPath
+                        )
+                    }
                 )
             }
         }
@@ -183,23 +221,22 @@ private struct AddMealStopFlow: View {
     @State private var mediaErrorMessage: String?
 
     var body: some View {
-        Group {
-            if let selectedMeal {
-                AddMealReviewView(
-                    meal: selectedMeal,
-                    localPhoto: selectedPhoto,
-                    initialCoordinate: initialCoordinate,
-                    roadGraph: roadGraph,
-                    onBack: {
-                        self.selectedMeal = nil
-                        self.selectedPhoto = nil
-                    },
-                    onAdd: onAdd
-                )
-            } else {
-                mealBrowser
+        mealBrowser
+            .navigationDestination(
+                isPresented: mealReviewIsPresented
+            ) {
+                if let selectedMeal {
+                    AddMealReviewView(
+                        meal: selectedMeal,
+                        localPhoto: selectedPhoto,
+                        initialCoordinate: initialCoordinate,
+                        roadGraph: roadGraph,
+                        onBack: closeMealReview,
+                        onAdd: onAdd
+                    )
+                }
             }
-        }
+            .interactiveDismissDisabled(isAnalyzingPhoto)
         .alert(
             "Unable to Read Meal Photo",
             isPresented: Binding(
@@ -248,12 +285,25 @@ private struct AddMealStopFlow: View {
                 Section("Use Search") {
                     Button {
                         selectedPhoto = nil
-                        selectedMeal = ActivityMealBrowseChoice(
-                            id: "custom-\(UUID().uuidString)",
-                            title: trimmedSearchText,
-                            subtitle: "Custom meal",
-                            imageURL: nil
+
+                        let customMeal =
+                            ActivityMealBrowseChoice(
+                                id: "custom-\(UUID().uuidString)",
+                                title: trimmedSearchText,
+                                subtitle: "Custom meal",
+                                imageURL: nil
+                            )
+
+                        SocketManager.shared.addMealSelected(
+                            mealID:
+                                customMeal.id,
+                            title:
+                                customMeal.title,
+                            source:
+                                "search"
                         )
+
+                        selectedMeal = customMeal
                     } label: {
                         Label("Use “\(trimmedSearchText)”", systemImage: "plus.circle.fill")
                     }
@@ -264,6 +314,16 @@ private struct AddMealStopFlow: View {
                 ForEach(filteredMeals) { meal in
                     Button {
                         selectedPhoto = nil
+
+                        SocketManager.shared.addMealSelected(
+                            mealID:
+                                meal.id,
+                            title:
+                                meal.title,
+                            source:
+                                "catalog"
+                        )
+
                         selectedMeal = meal
                     } label: {
                         HStack(spacing: 12) {
@@ -292,10 +352,43 @@ private struct AddMealStopFlow: View {
         .navigationTitle("Browse Meals")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search meals")
+        .onAppear {
+            SocketManager.shared.addMealBrowseOpened(
+                at:
+                    initialCoordinate
+            )
+        }
+        .onChange(of: searchText) { _, query in
+            SocketManager.shared.addMealBrowseQueryChanged(
+                query
+            )
+        }
         .onChange(of: photoPickerItem) { _, newItem in
             guard let newItem else { return }
+
+            SocketManager.shared.addMealPhotoSelected()
+
             Task { await loadMealPhoto(newItem) }
         }
+    }
+
+    private var mealReviewIsPresented: Binding<Bool> {
+        Binding(
+            get: {
+                selectedMeal != nil
+            },
+            set: { isPresented in
+                if !isPresented {
+                    selectedMeal = nil
+                    selectedPhoto = nil
+                }
+            }
+        )
+    }
+
+    private func closeMealReview() {
+        selectedMeal = nil
+        selectedPhoto = nil
     }
 
     private var trimmedSearchText: String {
@@ -325,7 +418,20 @@ private struct AddMealStopFlow: View {
 
         do {
             let media = try await AddStopMediaLoader.load(item, kind: .image)
-            let detectedTitle = await AddStopMealPhotoAnalyzer.suggestedTitle(from: media.data)
+            let detectedTitle = await AddStopMealPhotoAnalyzer.suggestedTitle(
+                from: media.previewImage
+            )
+
+            SocketManager.shared.addMealPhotoAnalyzed(
+                suggestedTitle:
+                    detectedTitle
+            )
+
+            // Clear the PhotosPicker selection first and yield one main-actor
+            // turn so the system picker can finish dismissing before this
+            // NavigationStack pushes the Meal Details screen.
+            photoPickerItem = nil
+            await Task.yield()
 
             selectedPhoto = media
             selectedMeal = ActivityMealBrowseChoice(
@@ -334,7 +440,6 @@ private struct AddMealStopFlow: View {
                 subtitle: "Detected from meal photo • Review before saving",
                 imageURL: nil
             )
-            photoPickerItem = nil
         } catch {
             mediaErrorMessage = error.localizedDescription
         }
@@ -468,6 +573,9 @@ private struct AddMealReviewView: View {
         isSaving = true
         defer { isSaving = false }
 
+        var didCompleteMediaUpload =
+            localPhoto == nil
+
         do {
             let startTime = addStopDayTime(from: startDate)
             let endTime = addStopDayTime(from: endDate)
@@ -483,7 +591,23 @@ private struct AddMealReviewView: View {
 
             var remoteImageURL = meal.imageURL
             if let localPhoto {
+                SocketManager.shared.addStopMediaUploadStarted(
+                    context:
+                        "activityMeal",
+                    itemCount:
+                        1
+                )
+
                 remoteImageURL = try await AddStopCloudinaryUploader.upload(localPhoto)
+
+                SocketManager.shared.addStopMediaUploadCompleted(
+                    context:
+                        "activityMeal",
+                    uploadedCount:
+                        remoteImageURL == nil ? 0 : 1
+                )
+
+                didCompleteMediaUpload = true
             }
 
             var summary = content.meal ?? ActivityMealNodeSummary(
@@ -524,6 +648,16 @@ private struct AddMealReviewView: View {
             draft.content = .activity(content)
             try addStopFinalize(draft, roadGraph: roadGraph, onAdd: onAdd)
         } catch {
+            if localPhoto != nil
+                && !didCompleteMediaUpload {
+                SocketManager.shared.addStopMediaUploadFailed(
+                    context:
+                        "activityMeal",
+                    message:
+                        error.localizedDescription
+                )
+            }
+
             saveErrorMessage = error.localizedDescription
         }
     }
@@ -626,11 +760,31 @@ private struct AddWorkoutStopFlow: View {
         .navigationTitle("Browse Workouts")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search workouts")
+        .onAppear {
+            SocketManager.shared.addWorkoutBrowseOpened(
+                at:
+                    initialCoordinate
+            )
+        }
+        .onChange(of: searchText) { _, query in
+            SocketManager.shared.addWorkoutBrowseQueryChanged(
+                query
+            )
+        }
     }
 
     @ViewBuilder
     private func workoutRow(_ option: ActivityWorkoutBrowseOption) -> some View {
         Button {
+            SocketManager.shared.addWorkoutSelected(
+                workoutID:
+                    option.summary.workoutID,
+                title:
+                    option.summary.title,
+                workoutType:
+                    option.summary.resolvedWorkoutType
+            )
+
             selectedWorkout = option
         } label: {
             HStack(spacing: 12) {
@@ -956,6 +1110,15 @@ private struct AddTaskStopView: View {
 
         do {
             localImages = try await AddStopMediaLoader.load(items, kind: .image)
+
+            SocketManager.shared.addStopMediaSelected(
+                context:
+                    "activityTask",
+                imageCount:
+                    localImages.count,
+                videoCount:
+                    0
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -971,8 +1134,32 @@ private struct AddTaskStopView: View {
         isSaving = true
         defer { isSaving = false }
 
+        var didCompleteMediaUpload =
+            localImages.isEmpty
+
         do {
+            if !localImages.isEmpty {
+                SocketManager.shared.addStopMediaUploadStarted(
+                    context:
+                        "activityTask",
+                    itemCount:
+                        localImages.count
+                )
+            }
+
             let uploadedImageURLs = try await AddStopCloudinaryUploader.upload(localImages)
+
+            if !localImages.isEmpty {
+                SocketManager.shared.addStopMediaUploadCompleted(
+                    context:
+                        "activityTask",
+                    uploadedCount:
+                        uploadedImageURLs.count
+                )
+
+                didCompleteMediaUpload = true
+            }
+
             let startTime = addStopDayTime(from: startDate)
             let endTime = addStopDayTime(from: endDate)
 
@@ -1008,6 +1195,16 @@ private struct AddTaskStopView: View {
             draft.content = .activity(content)
             try addStopFinalize(draft, roadGraph: roadGraph, onAdd: onAdd)
         } catch {
+            if !localImages.isEmpty
+                && !didCompleteMediaUpload {
+                SocketManager.shared.addStopMediaUploadFailed(
+                    context:
+                        "activityTask",
+                    message:
+                        error.localizedDescription
+                )
+            }
+
             errorMessage = error.localizedDescription
         }
     }
@@ -1175,6 +1372,15 @@ private struct AddPostStopView: View {
         do {
             localImages = try await AddStopMediaLoader.load(images, kind: .image)
             localVideos = try await AddStopMediaLoader.load(videos, kind: .video)
+
+            SocketManager.shared.addStopMediaSelected(
+                context:
+                    addType.rawValue,
+                imageCount:
+                    localImages.count,
+                videoCount:
+                    localVideos.count
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1186,9 +1392,37 @@ private struct AddPostStopView: View {
         isSaving = true
         defer { isSaving = false }
 
+        var didCompleteMediaUpload =
+            localImages.isEmpty
+            && localVideos.isEmpty
+
         do {
+            let mediaCount =
+                localImages.count
+                + localVideos.count
+
+            if mediaCount > 0 {
+                SocketManager.shared.addStopMediaUploadStarted(
+                    context:
+                        addType.rawValue,
+                    itemCount:
+                        mediaCount
+                )
+            }
+
             let imageURLs = try await AddStopCloudinaryUploader.upload(localImages)
             let videoURLs = try await AddStopCloudinaryUploader.upload(localVideos)
+
+            if mediaCount > 0 {
+                SocketManager.shared.addStopMediaUploadCompleted(
+                    context:
+                        addType.rawValue,
+                    uploadedCount:
+                        imageURLs.count + videoURLs.count
+                )
+
+                didCompleteMediaUpload = true
+            }
 
             var draft = GameNodeFactory.make(addType: addType, coordinate: initialCoordinate)
 
@@ -1217,6 +1451,16 @@ private struct AddPostStopView: View {
             draft.content = .post(content)
             try addStopFinalize(draft, roadGraph: roadGraph, onAdd: onAdd)
         } catch {
+            if (!localImages.isEmpty || !localVideos.isEmpty)
+                && !didCompleteMediaUpload {
+                SocketManager.shared.addStopMediaUploadFailed(
+                    context:
+                        addType.rawValue,
+                    message:
+                        error.localizedDescription
+                )
+            }
+
             errorMessage = error.localizedDescription
         }
     }
@@ -1274,7 +1518,7 @@ private enum AddStopMediaLoader {
         let filename = "fifoo-\(UUID().uuidString).\(fileExtension)"
 
         if kind == .image {
-            guard let image = UIImage(data: data) else {
+            guard let image = downsampledPreviewImage(from: data) else {
                 throw AddStopCreationError.unreadableMedia
             }
 
@@ -1300,6 +1544,35 @@ private enum AddStopMediaLoader {
             previewImage: nil,
             temporaryURL: temporaryURL
         )
+    }
+
+    private static func downsampledPreviewImage(
+        from data: Data,
+        maxPixelSize: CGFloat = 1400
+    ) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(
+            data as CFData,
+            nil
+        ) else {
+            return nil
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            options as CFDictionary
+        ) else {
+            return nil
+        }
+
+        return UIImage(cgImage: thumbnail)
     }
 }
 
@@ -1452,9 +1725,8 @@ private enum AddStopMealPhotoAnalyzer {
     /// Uses Apple's on-device Vision image classifier to seed a meal title.
     /// The result is intentionally editable because generic image classifiers
     /// can identify a broad dish category rather than the exact recipe.
-    static func suggestedTitle(from data: Data) async -> String {
-        guard let image = UIImage(data: data),
-              let cgImage = image.cgImage else {
+    static func suggestedTitle(from image: UIImage?) async -> String {
+        guard let cgImage = image?.cgImage else {
             return "Meal from Photo"
         }
 

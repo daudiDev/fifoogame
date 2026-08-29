@@ -346,3 +346,48 @@ enum DistanceUnit: String, Codable, CaseIterable {
     case yards
     case miles
 }
+
+// MARK: - Persisted exercise timing
+
+extension WorkoutExercise {
+
+    /// Active exercise time derived entirely from persisted lifecycle dates.
+    /// Open pause periods are subtracted through `date`, so a paused exercise
+    /// does not continue consuming its autoplay countdown while the app is
+    /// closed.
+    func activeElapsedTime(
+        at date: Date = Date()
+    ) -> TimeInterval {
+
+        guard let startedAt else {
+            return 0
+        }
+
+        let effectiveEnd =
+            completedAt
+            ?? date
+
+        var pausedDuration: TimeInterval = 0
+
+        for period in pausePeriods {
+
+            let pauseEnd =
+                period.endedAt
+                ?? effectiveEnd
+
+            pausedDuration +=
+                max(
+                    0,
+                    pauseEnd.timeIntervalSince(
+                        period.startedAt
+                    )
+                )
+        }
+
+        return max(
+            0,
+            effectiveEnd.timeIntervalSince(startedAt)
+            - pausedDuration
+        )
+    }
+}
