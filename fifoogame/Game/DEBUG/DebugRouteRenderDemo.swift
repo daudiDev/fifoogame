@@ -376,11 +376,18 @@ private extension GameStore {
         // 2. Completed-route nodes
         // =====================================================
 
-        let completedSpecs: [(GridIntersectionID, String)] = [
-            (.init(column: 4, row: 1), "Early Start"),       // 1:30 AM
-            (.init(column: 3, row: 3), "Morning Reset"),     // 4:30 AM
-            (.init(column: 4, row: 5), "Breakfast Walk"),    // 7:30 AM
-            (.init(column: 4, row: 7), "Midday Prep")        // 10:30 AM
+        let completedSpecs: [
+            (
+                GridIntersectionID,
+                String,
+                ActivityNodeContent.ActivityType,
+                ActivityWorkoutType?
+            )
+        ] = [
+            (.init(column: 4, row: 1), "Sunrise Mobility", .workout, .independent),
+            (.init(column: 3, row: 3), "Morning Yoga Class", .workout, .guidedClass),
+            (.init(column: 4, row: 5), "Breakfast Sandwich", .meal, nil),
+            (.init(column: 4, row: 7), "Lunch Walk", .workout, .independent)
         ]
 
         let completedNodes =
@@ -393,7 +400,11 @@ private extension GameStore {
                     routeRole:
                         "completed",
                     status:
-                        "Completed"
+                        "Completed",
+                    activityType:
+                        $0.2,
+                    workoutType:
+                        $0.3
                 )
             }
 
@@ -429,36 +440,50 @@ private extension GameStore {
                 intersection:
                     chosenOneIntersection,
                 title:
-                    "Lunch Follow-up",
+                    "Cheeseburger",
                 routeRole:
-                    "chosen"
+                    "chosen",
+                activityType:
+                    .meal
             ),
 
             makeFullDayFixtureNode(
                 intersection:
                     chosenTwoIntersection,
                 title:
-                    "Afternoon Focus",
+                    "Upper Body Strength",
                 routeRole:
-                    "chosen"
+                    "chosen",
+                activityType:
+                    .workout,
+                workoutType:
+                    .independent
             ),
 
             makeFullDayFixtureNode(
                 intersection:
                     chosenThreeIntersection,
                 title:
-                    "Evening Workout",
+                    "Evening Bootcamp Class",
                 routeRole:
-                    "chosen"
+                    "chosen",
+                activityType:
+                    .workout,
+                workoutType:
+                    .guidedClass
             ),
 
             makeFullDayFixtureNode(
                 intersection:
                     chosenFourIntersection,
                 title:
-                    "Wind Down",
+                    "Evening Recovery",
                 routeRole:
-                    "chosen"
+                    "chosen",
+                activityType:
+                    .workout,
+                workoutType:
+                    .independent
             ),
 
             makeFullDayFixtureNode(
@@ -521,9 +546,11 @@ private extension GameStore {
                 intersection:
                     altThreeIntersection,
                 title:
-                    "Dinner Option",
+                    "Chicken Burrito Bowl",
                 routeRole:
-                    "alternative-3"
+                    "alternative-3",
+                activityType:
+                    .meal
             ),
 
             makeFullDayFixtureNode(
@@ -939,7 +966,9 @@ private extension GameStore {
         intersection: GridIntersectionID,
         title: String,
         routeRole: String,
-        status: String = "Not Started"
+        status: String = "Not Started",
+        activityType: ActivityNodeContent.ActivityType = .task,
+        workoutType: ActivityWorkoutType? = nil
     ) -> GameMapNode {
 
         let coordinate =
@@ -969,14 +998,37 @@ private extension GameStore {
                             title,
                         startTime:
                             coordinate.time.displayClockString,
+                        endTime:
+                            debugWorkoutEndTime(
+                                startTime: coordinate.time,
+                                activityType: activityType,
+                                workoutType: workoutType
+                            ),
                         description:
                             "Full-day path testing fixture (\(routeRole)).",
                         activityType:
-                            ActivityNodeContent.ActivityType.task.rawValue,
+                            activityType.rawValue,
                         status:
                             status,
+                        meal:
+                            debugMealSummary(
+                                title: title,
+                                routeRole: routeRole,
+                                activityType: activityType
+                            ),
+                        workout:
+                            debugWorkoutSummary(
+                                title: title,
+                                routeRole: routeRole,
+                                activityType: activityType,
+                                workoutType: workoutType,
+                                startTime: coordinate.time
+                            ),
                         image:
-                            nil
+                            debugFixtureImage(
+                                title: title,
+                                routeRole: routeRole
+                            )
                     )
                 ),
             isEnabled:
@@ -989,7 +1041,9 @@ private extension GameStore {
         coordinate: MapCoordinate,
         title: String,
         routeRole: String,
-        status: String = "Not Started"
+        status: String = "Not Started",
+        activityType: ActivityNodeContent.ActivityType = .task,
+        workoutType: ActivityWorkoutType? = nil
     ) -> GameMapNode {
 
         GameMapNode(
@@ -1010,14 +1064,37 @@ private extension GameStore {
                             title,
                         startTime:
                             coordinate.time.displayClockString,
+                        endTime:
+                            debugWorkoutEndTime(
+                                startTime: coordinate.time,
+                                activityType: activityType,
+                                workoutType: workoutType
+                            ),
                         description:
                             "Full-day path testing fixture (\(routeRole)).",
                         activityType:
-                            ActivityNodeContent.ActivityType.task.rawValue,
+                            activityType.rawValue,
                         status:
                             status,
+                        meal:
+                            debugMealSummary(
+                                title: title,
+                                routeRole: routeRole,
+                                activityType: activityType
+                            ),
+                        workout:
+                            debugWorkoutSummary(
+                                title: title,
+                                routeRole: routeRole,
+                                activityType: activityType,
+                                workoutType: workoutType,
+                                startTime: coordinate.time
+                            ),
                         image:
-                            nil
+                            debugFixtureImage(
+                                title: title,
+                                routeRole: routeRole
+                            )
                     )
                 ),
             isEnabled:
@@ -1027,6 +1104,180 @@ private extension GameStore {
 
 
 
+
+    func debugMealSummary(
+        title: String,
+        routeRole: String,
+        activityType: ActivityNodeContent.ActivityType
+    ) -> ActivityMealNodeSummary? {
+
+        guard activityType == .meal else {
+            return nil
+        }
+
+        return ActivityMealNodeSummary(
+            suggestedMealID:
+                "debug-meal-\(routeRole)-\(UUID().uuidString)",
+            title:
+                title,
+            estimatedTimeMinutes:
+                30,
+            priceRange:
+                "$$",
+            imageURL:
+                debugFixtureImageURL(
+                    title: title,
+                    routeRole: routeRole
+                )
+        )
+    }
+
+
+    func debugWorkoutSummary(
+        title: String,
+        routeRole: String,
+        activityType: ActivityNodeContent.ActivityType,
+        workoutType: ActivityWorkoutType?,
+        startTime: DayTime
+    ) -> ActivityWorkoutNodeSummary? {
+
+        guard activityType == .workout else {
+            return nil
+        }
+
+        let resolvedType =
+            workoutType ?? .independent
+
+        let isClass =
+            resolvedType == .guidedClass
+
+        let durationSeconds =
+            isClass ? 3_600 : 2_700
+
+        return ActivityWorkoutNodeSummary(
+            activityWorkoutID:
+                "debug-workout-\(routeRole)-\(UUID().uuidString)",
+            workoutID:
+                "debug-workout-template-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))",
+            title:
+                title,
+            location:
+                isClass
+                ? "Fifoo Training Studio"
+                : "Flexible / User Choice",
+            categories:
+                isClass
+                ? ["Class", "Guided"]
+                : ["Independent", "Fifoo Play"],
+            selectedWorkoutTime:
+                startTime.displayClockString,
+            durationInSeconds:
+                durationSeconds,
+            durationText:
+                isClass ? "60 min" : "45 min",
+            distance:
+                isClass ? "1.8 mi" : "",
+            workoutFormat:
+                isClass ? "Class" : "Independent",
+            rating:
+                isClass ? "4.9" : "4.8",
+            workoutType:
+                resolvedType,
+            imageURLs:
+                [
+                    debugFixtureImageURL(
+                        title: title,
+                        routeRole: routeRole
+                    )
+                ],
+            description:
+                isClass
+                ? "Instructor-led debug workout class with a fixed scheduled time."
+                : "Independent debug workout that opens directly in Fifoo Play.",
+            phone:
+                isClass ? "(410) 555-0110" : nil,
+            website:
+                isClass ? "https://fifootraining.example/classes" : nil,
+            trainer:
+                isClass
+                ? ActivityTrainerNodeSummary(
+                    userID: "debug-trainer-\(routeRole)",
+                    name: "Jordan Lee",
+                    location: "Fifoo Training Studio",
+                    userImageURL: "https://picsum.photos/seed/debug-trainer-jordan/300/300",
+                    userDescription: "Strength, mobility, and conditioning coach.",
+                    conversationID: "debug-trainer-conversation-\(routeRole)",
+                    onlineStatus: "Online",
+                    rating: "4.9"
+                )
+                : nil,
+            workoutStatus:
+                "Scheduled"
+        )
+    }
+
+
+    func debugWorkoutEndTime(
+        startTime: DayTime,
+        activityType: ActivityNodeContent.ActivityType,
+        workoutType: ActivityWorkoutType?
+    ) -> String {
+
+        guard activityType == .workout else {
+            return ""
+        }
+
+        let duration: TimeInterval =
+            workoutType == .guidedClass
+            ? 3_600
+            : 2_700
+
+        return DayTime(
+            secondsFromMidnight:
+                startTime.secondsFromMidnight + duration
+        )
+        .displayClockString
+    }
+
+
+    func debugFixtureImage(
+        title: String,
+        routeRole: String
+    ) -> GameNodeImage? {
+
+        .remote(
+            urlString:
+                debugFixtureImageURL(
+                    title: title,
+                    routeRole: routeRole
+                )
+        )
+    }
+
+
+    func debugFixtureImageURL(
+        title: String,
+        routeRole: String
+    ) -> String {
+
+        let rawSeed =
+            "\(routeRole)-\(title)"
+
+        let seed =
+            rawSeed
+                .lowercased()
+                .replacingOccurrences(
+                    of: " ",
+                    with: "-"
+                )
+                .replacingOccurrences(
+                    of: "[^a-z0-9-]",
+                    with: "",
+                    options: .regularExpression
+                )
+
+        return "https://picsum.photos/seed/\(seed)/800/800"
+    }
 
 
     // MARK: - Full-Day Fixture Route Builders

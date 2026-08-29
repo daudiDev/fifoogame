@@ -71,6 +71,7 @@ enum PostNodeViewAction:
     Sendable {
 
     case respond
+    case submitReply(text: String)
     case save
     case viewPoster
     case viewLinkedContent(PostNodeLinkedContent)
@@ -94,6 +95,16 @@ struct GameNodePostView: View {
 
     let onAction:
         ((PostNodeViewAction, GameMapNode) -> Void)?
+
+
+    @State
+    private var replyText: String = ""
+
+    @State
+    private var localReplies: [PostNodeCommentSnapshot] = []
+
+    @FocusState
+    private var isReplyFocused: Bool
 
 
     @Environment(\.dismiss)
@@ -164,12 +175,13 @@ struct GameNodePostView: View {
                         .cancellationAction
                 ) {
 
-                    Button(
-                        "Cancel"
-                    ) {
-
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
                     }
+                    .accessibilityLabel("Close")
                 }
             }
         }
@@ -192,92 +204,385 @@ private extension GameNodePostView {
             showsIndicators:
                 false
         ) {
-
-            VStack(
-                spacing:
-                    16
+            LazyVStack(
+                alignment: .leading,
+                spacing: 0
             ) {
+                socialPosterHeader(post)
 
-                posterSection(
-                    post
-                )
+                Divider()
+                    .padding(.horizontal, 16)
 
+                socialPostBody(post)
 
-                subjectSection(
-                    post
-                )
+                Divider()
+                    .padding(.horizontal, 16)
 
-
-                if hasMainMedia(
-                    post
-                ) {
-
-                    mediaSection(
-                        post
-                    )
-                }
-
-
-                let linked =
-                    linkedContent(
-                        post
-                    )
-
-                if !linked.isEmpty {
-
-                    linkedContentSection(
-                        linked
-                    )
-                }
-
-
-                engagementSection(
-                    post
-                )
-
-
-                if !post.tags.isEmpty {
-
-                    tagsSection(
-                        post.tags
-                    )
-                }
-
-
-                postInfoSection(
-                    post
-                )
+                socialCommentsSection(post)
             }
-            .padding(
-                .horizontal,
-                16
-            )
-            .padding(
-                .top,
-                12
-            )
-            .padding(
-                .bottom,
-                20
-            )
+            .padding(.bottom, 24)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(
-            Color(
-                uiColor:
-                    .systemGroupedBackground
-            )
+            Color(uiColor: .systemBackground)
         )
         .safeAreaInset(
-            edge:
-                .bottom,
-            spacing:
-                0
+            edge: .bottom,
+            spacing: 0
         ) {
+            replyComposer(post)
+        }
+    }
 
-            postActionBar(
-                post
+
+    func socialPosterHeader(
+        _ post: PostNodeSnapshot
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button {
+                onAction?(.viewPoster, node)
+            } label: {
+                posterAvatar(post)
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(displayPosterName(post.posterName))
+                    .font(.headline.weight(.bold))
+
+                HStack(spacing: 5) {
+                    if isUsable(post.posterLocation) {
+                        Text(post.posterLocation)
+                    }
+
+                    if isUsable(post.posterLocation) && isUsable(post.posterRole) {
+                        Text("•")
+                    }
+
+                    if isUsable(post.posterRole) {
+                        Text(post.posterRole)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+                if isUsable(post.createdAt) {
+                    Text(displayDate(post.createdAt))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Spacer(minLength: 8)
+            postTypeBadge(post)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+
+    @ViewBuilder
+    func socialPostBody(
+        _ post: PostNodeSnapshot
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(post.preferredTitle)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+
+            if !post.tags.isEmpty {
+                Text(
+                    post.tags
+                        .map { $0.hasPrefix("#") ? $0 : "#\($0)" }
+                        .joined(separator: "  ")
+                )
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(postTypeColor(post))
+            }
+
+            if hasMainMedia(post) {
+                postMainMedia(post)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(4 / 3, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(
+                        Color.black.opacity(0.05),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+            }
+
+            HStack(spacing: 18) {
+                Label(
+                    "\(max(post.postResponseCount, allComments(post).count)) Comments",
+                    systemImage: "bubble.left"
+                )
+
+                Spacer()
+
+                Button {
+                    onAction?(.save, node)
+                } label: {
+                    Label(
+                        post.isSaved ? "Saved" : "Save",
+                        systemImage: post.isSaved ? "bookmark.fill" : "bookmark"
+                    )
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(post.isSaved ? postTypeColor(post) : Color.secondary)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+
+            let linked = linkedContent(post)
+            if !linked.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(linked.enumerated()), id: \.offset) { _, item in
+                            Button {
+                                onAction?(.viewLinkedContent(item), node)
+                            } label: {
+                                Label(item.title, systemImage: item.systemImageName)
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        Color.secondary.opacity(0.10),
+                                        in: Capsule()
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.primary)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+    }
+
+
+    func socialCommentsSection(
+        _ post: PostNodeSnapshot
+    ) -> some View {
+        let comments = allComments(post)
+        let displayedCount = max(post.postResponseCount + localReplies.count, comments.count)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("\(displayedCount) Comments")
+                    .font(.title3.weight(.bold))
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 8)
+
+            if comments.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+
+                    Text("No comments loaded yet")
+                        .font(.subheadline.weight(.semibold))
+
+                    Text("Be the first to reply from this stop.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 34)
+            } else {
+                ForEach(comments, id: \.commentID) { comment in
+                    socialCommentRow(comment)
+                }
+            }
+        }
+    }
+
+
+    func socialCommentRow(
+        _ comment: PostNodeCommentSnapshot
+    ) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            socialCommentAvatar(comment)
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    Text(comment.userName.isEmpty ? "Member" : comment.userName)
+                        .font(.subheadline.weight(.semibold))
+
+                    if isUsable(comment.createdAt) {
+                        Text("•")
+                            .foregroundStyle(.tertiary)
+
+                        Text(displayDate(comment.createdAt))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    if comment.isPinned {
+                        Label("Pinned", systemImage: "pin.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.secondary.opacity(0.10), in: Capsule())
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                Text(comment.body)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 16) {
+                    Button("Reply") {
+                        replyText = "@\(comment.userName) "
+                        isReplyFocused = true
+                    }
+                    .buttonStyle(.plain)
+
+                    if comment.replyCount > 0 {
+                        Text("View \(comment.replyCount) \(comment.replyCount == 1 ? "reply" : "replies")")
+                    }
+
+                    Spacer()
+
+                    if comment.likeCount > 0 {
+                        Label("\(comment.likeCount)", systemImage: "heart")
+                    }
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+
+    func socialCommentAvatar(
+        _ comment: PostNodeCommentSnapshot
+    ) -> some View {
+        Group {
+            if let url = usableURL(comment.userImageURL) {
+                AsyncImage(url: url) { phase in
+                    if case let .success(image) = phase {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Image(systemName: "person.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .padding(9)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Image(systemName: "person.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(9)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .background(Color.secondary.opacity(0.10), in: Circle())
+        .clipShape(Circle())
+    }
+
+
+    func replyComposer(
+        _ post: PostNodeSnapshot
+    ) -> some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            Image(systemName: "person.crop.circle.fill")
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField(
+                    "Add a comment",
+                    text: $replyText,
+                    axis: .vertical
+                )
+                .focused($isReplyFocused)
+                .lineLimit(1...4)
+                .textFieldStyle(.plain)
+                .submitLabel(.send)
+                .onSubmit {
+                    submitReply()
+                }
+
+                Button {
+                    submitReply()
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(
+                            replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? Color.secondary
+                            : postTypeColor(post)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                Color(uiColor: .secondarySystemBackground),
+                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
             )
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(.bar)
+        .overlay(alignment: .top) {
+            Divider()
+        }
+    }
+
+
+    func submitReply() {
+        let cleaned = replyText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleaned.isEmpty else { return }
+
+        localReplies.append(
+            PostNodeCommentSnapshot(
+                commentID: UUID().uuidString,
+                userName: "You",
+                body: cleaned,
+                createdAt: ISO8601DateFormatter().string(from: Date())
+            )
+        )
+
+        onAction?(
+            .submitReply(text: cleaned),
+            node
+        )
+
+        replyText = ""
+        isReplyFocused = false
+    }
+
+
+    func allComments(
+        _ post: PostNodeSnapshot
+    ) -> [PostNodeCommentSnapshot] {
+        (post.comments ?? []) + localReplies
     }
 
 
@@ -1784,7 +2089,7 @@ private extension GameNodePostView {
             return "Post Details"
         }
 
-        return "\(snapshot.postTypeDisplayName) Details"
+        return "Post"
     }
 
 

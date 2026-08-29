@@ -23,7 +23,17 @@ enum GameNodeAction:
         userID: String
     )
 
-    case showActivity(
+    case showActivityMeal(
+        nodeID: GameNodeID,
+        activityID: String
+    )
+
+    case showActivityWorkout(
+        nodeID: GameNodeID,
+        activityID: String
+    )
+
+    case showActivityTask(
         nodeID: GameNodeID,
         activityID: String
     )

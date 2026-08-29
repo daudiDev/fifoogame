@@ -20,12 +20,49 @@ enum GameNodeKind:
     CaseIterable,
     Sendable {
 
-    case play
     case user
-    case activity
+    case activityMeal
+    case activityWorkout
+    case activityTask
     case post
     case media
     case hyperlink
+}
+
+
+extension GameNodeKind {
+
+    /// Backward-compatible decode for builds that persisted the old
+    /// user-facing `play` kind. Play is now an Independent ActivityWorkout.
+    init(from decoder: Decoder) throws {
+        let container =
+            try decoder.singleValueContainer()
+
+        let rawValue =
+            try container.decode(String.self)
+
+        if rawValue == "play" {
+            self = .activityWorkout
+            return
+        }
+
+        guard let kind = Self(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown GameNodeKind: \(rawValue)"
+            )
+        }
+
+        self = kind
+    }
+
+
+    func encode(to encoder: Encoder) throws {
+        var container =
+            encoder.singleValueContainer()
+
+        try container.encode(rawValue)
+    }
 }
 
 
@@ -35,19 +72,24 @@ extension GameNodeKind {
 
         switch self {
 
-        case .play:
-
-            return "Play"
-
-
         case .user:
 
             return "User"
 
 
-        case .activity:
+        case .activityMeal:
 
-            return "Activity"
+            return "Meal"
+
+
+        case .activityWorkout:
+
+            return "Workout"
+
+
+        case .activityTask:
+
+            return "Task"
 
 
         case .post:
@@ -71,19 +113,24 @@ extension GameNodeKind {
 
         switch self {
 
-        case .play:
-
-            return "play.fill"
-
-
         case .user:
 
             return "person.crop.circle.fill"
 
 
-        case .activity:
+        case .activityMeal:
 
-            return "figure.walk"
+            return "fork.knife"
+
+
+        case .activityWorkout:
+
+            return "figure.run"
+
+
+        case .activityTask:
+
+            return "checkmark.circle.fill"
 
 
         case .post:
@@ -107,19 +154,24 @@ extension GameNodeKind {
 
         switch self {
 
-        case .play:
-
-            return "Open the full-screen Play experience."
-
-
         case .user:
 
             return "Place a user on the map."
 
 
-        case .activity:
+        case .activityMeal:
 
-            return "Add an activity or action."
+            return "Add a scheduled meal."
+
+
+        case .activityWorkout:
+
+            return "Add a scheduled workout."
+
+
+        case .activityTask:
+
+            return "Add a scheduled task."
 
 
         case .post:
@@ -195,6 +247,10 @@ enum GameNodeContent:
         UserNodeContent
     )
 
+    /// Backward-compatible transport envelope for ActivityMeal,
+    /// ActivityWorkout and ActivityTask. The public `kind` is derived from
+    /// `ActivityNodeContent.activityType`, so the three activity families are
+    /// distinct GameNode kinds without breaking existing persisted payloads.
     case activity(
         ActivityNodeContent
     )
@@ -219,13 +275,22 @@ enum GameNodeContent:
         switch self {
 
         case .play:
-            return .play
+            // Legacy Play payloads are treated as independent ActivityWorkout
+            // stops. `.play` is no longer a user-facing GameNodeKind.
+            return .activityWorkout
 
         case .user:
             return .user
 
-        case .activity:
-            return .activity
+        case let .activity(content):
+            switch content.resolvedActivityType {
+            case .meal:
+                return .activityMeal
+            case .workout:
+                return .activityWorkout
+            case .task:
+                return .activityTask
+            }
 
         case .post:
             return .post
@@ -294,9 +359,13 @@ enum GameNodeContent:
 }
 
 // =====================================================
-// MARK: - Play
+// MARK: - Legacy Play Transport
 // =====================================================
 
+/// Legacy transport payload retained so previously persisted `.play` nodes
+/// still decode. New independent workouts are represented by
+/// `.activity(ActivityNodeContent)` with `activityType == .workout` and
+/// `workoutType == .independent`.
 struct PlayNodeContent:
     Codable,
     Equatable,
@@ -480,6 +549,48 @@ struct ActivityMealItemNodeSummary:
 /// Snapshot of the top-level SuggestedMeal properties that are useful on the
 /// day map. This mirrors the supplied SuggestedMeal model without copying its
 /// entire nested Recipe graph into GameMapNode.
+/// Persisted execution state for the full-screen ActivityMeal player.
+/// All fields are optional-by-container because `ActivityMealNodeSummary`
+/// stores this object optionally, preserving compatibility with older nodes.
+struct ActivityMealExecutionPlanNodeSummary:
+    Codable,
+    Equatable,
+    Sendable {
+
+    var selectedMealName: String
+    var source: String
+    var currentStepID: String?
+    var completedStepIDs: [String]
+    var skippedStepIDs: [String]
+    var isPaused: Bool
+
+    var recipeName: String
+    var ingredientsReady: Bool
+    var groceriesNeeded: Bool
+
+    var venueName: String
+    var venueLocation: String
+    var venueHours: String
+    var venueAvailable: Bool
+    var fulfillmentMode: String
+
+    var hostName: String
+    var eventLocation: String
+    var invitationConfirmed: Bool
+    var contribution: String
+
+    // Pass 5.28 — optional richer ActivityMeal execution details.
+    // These stay optional so previously persisted ActivityMeal nodes continue
+    // to decode without requiring a migration.
+    var mealConfirmed: Bool? = nil
+    var ingredients: [String]? = nil
+    var shoppingList: [String]? = nil
+    var ingredientStoreName: String? = nil
+    var selectedHostID: String? = nil
+    var contributionItems: [String]? = nil
+}
+
+
 struct ActivityMealNodeSummary:
     Codable,
     Equatable,
@@ -497,6 +608,10 @@ struct ActivityMealNodeSummary:
     var meals: [ActivityMealItemNodeSummary]? = nil
     var createdAt: String? = nil
     var copyStatus: ActivityCopyStatusNodeSummary? = nil
+
+    /// Optional full-screen play state. Older persisted meal summaries decode
+    /// with nil and simply start from the Welcome page.
+    var executionPlan: ActivityMealExecutionPlanNodeSummary? = nil
 }
 
 
@@ -543,6 +658,36 @@ struct ActivityWorkoutParticipantNodeSummary:
 }
 
 
+// =====================================================
+// MARK: - Activity Workout Type
+// =====================================================
+
+/// ActivityWorkout has two user-facing execution modes.
+///
+/// - `guidedClass`: a scheduled trainer/studio/class experience. The class
+///   owns its time, so changing time means choosing a different class.
+/// - `independent`: a Fifoo Play workout the user performs on their own. The
+///   scheduled activity time remains editable.
+enum ActivityWorkoutType:
+    String,
+    Codable,
+    CaseIterable,
+    Sendable {
+
+    case guidedClass = "guidedClass"
+    case independent
+
+    var displayName: String {
+        switch self {
+        case .guidedClass:
+            return "Guided / Class"
+        case .independent:
+            return "Independent"
+        }
+    }
+}
+
+
 /// Map snapshot of the supplied Workout model. The original
 /// `activityWorkoutID` is retained for backward compatibility with the older
 /// ActivityWorkout-based node snapshot.
@@ -563,9 +708,19 @@ struct ActivityWorkoutNodeSummary:
     var workoutFormat: String
     var rating: String
 
+    /// Optional explicit execution type. This stays optional so ActivityWorkout
+    /// snapshots written before Pass 5.29 continue to decode unchanged.
+    var workoutType: ActivityWorkoutType? = nil
+
     // Additional top-level Workout data from the supplied model.
     var imageURLs: [String]? = nil
     var description: String? = nil
+
+    /// Optional contact details for guided/class workouts. These stay optional
+    /// so ActivityWorkout snapshots written before Pass 5.32 continue to decode.
+    var phone: String? = nil
+    var website: String? = nil
+
     var trainer: ActivityTrainerNodeSummary? = nil
     var workoutStatus: String? = nil
     var commentsCount: Int? = nil
@@ -573,6 +728,42 @@ struct ActivityWorkoutNodeSummary:
     var createdAt: String? = nil
     var user: ActivityUserNodeSummary? = nil
     var copyStatus: ActivityCopyStatusNodeSummary? = nil
+}
+
+
+extension ActivityWorkoutNodeSummary {
+
+    /// Resolves older workout snapshots that only carried `workoutFormat`.
+    /// Backend values such as "Class", "Guided", "Studio", etc. continue to
+    /// behave as guided classes without requiring a migration.
+    var resolvedWorkoutType: ActivityWorkoutType {
+        if let workoutType {
+            return workoutType
+        }
+
+        let searchable = [
+            workoutFormat,
+            title,
+            description ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        let guidedMarkers = [
+            "class",
+            "guided",
+            "trainer",
+            "instructor",
+            "studio",
+            "bootcamp"
+        ]
+
+        if guidedMarkers.contains(where: searchable.contains) {
+            return .guidedClass
+        }
+
+        return .independent
+    }
 }
 
 
@@ -1039,6 +1230,50 @@ extension ActivityNodeContent {
 // MARK: - Post
 // =====================================================
 
+/// Lightweight comment snapshot used by the map Post detail experience.
+/// The social feature remains authoritative; this only gives a Post stop enough
+/// information to render a conventional comment thread while offline/from the
+/// day map. Optional storage on `PostNodeSnapshot` keeps older payloads valid.
+struct PostNodeCommentSnapshot:
+    Codable,
+    Equatable,
+    Sendable {
+
+    var commentID: String
+    var userID: String
+    var userName: String
+    var userImageURL: String
+    var body: String
+    var createdAt: String
+    var replyCount: Int
+    var likeCount: Int
+    var isPinned: Bool
+
+
+    init(
+        commentID: String,
+        userID: String = "",
+        userName: String,
+        userImageURL: String = "",
+        body: String,
+        createdAt: String = "",
+        replyCount: Int = 0,
+        likeCount: Int = 0,
+        isPinned: Bool = false
+    ) {
+        self.commentID = commentID
+        self.userID = userID
+        self.userName = userName
+        self.userImageURL = userImageURL
+        self.body = body
+        self.createdAt = createdAt
+        self.replyCount = replyCount
+        self.likeCount = likeCount
+        self.isPinned = isPinned
+    }
+}
+
+
 /// Read-only snapshot of the application's `Post` model.
 ///
 /// The social/post feature remains authoritative. The map keeps this snapshot
@@ -1076,6 +1311,9 @@ struct PostNodeSnapshot:
     var postActivityID: String
     var postTaskID: String
 
+    /// Optional for backward-compatible decoding of existing Post stops.
+    var comments: [PostNodeCommentSnapshot]? = nil
+
 
     init(
         postID: String,
@@ -1103,7 +1341,8 @@ struct PostNodeSnapshot:
         postMealID: String,
         postWorkoutID: String,
         postActivityID: String,
-        postTaskID: String
+        postTaskID: String,
+        comments: [PostNodeCommentSnapshot]? = nil
     ) {
 
         self.postID = postID
@@ -1132,6 +1371,7 @@ struct PostNodeSnapshot:
         self.postWorkoutID = postWorkoutID
         self.postActivityID = postActivityID
         self.postTaskID = postTaskID
+        self.comments = comments
     }
 
 

@@ -141,14 +141,17 @@ private extension GameNodePlaceholderImage {
 
         switch kind {
 
-        case .play:
-            return "PL"
-
         case .user:
             return "US"
 
-        case .activity:
-            return "AC"
+        case .activityMeal:
+            return "ML"
+
+        case .activityWorkout:
+            return "WO"
+
+        case .activityTask:
+            return "TK"
 
         case .post:
             return "PO"
@@ -168,22 +171,6 @@ private extension GameNodePlaceholderImage {
 
         switch kind {
 
-        case .play:
-            return Palette(
-                top: UIColor(
-                    red: 0.18,
-                    green: 0.58,
-                    blue: 0.82,
-                    alpha: 1
-                ),
-                bottom: UIColor(
-                    red: 0.10,
-                    green: 0.34,
-                    blue: 0.58,
-                    alpha: 1
-                )
-            )
-
         case .user:
             return Palette(
                 top: UIColor(
@@ -200,7 +187,9 @@ private extension GameNodePlaceholderImage {
                 )
             )
 
-        case .activity:
+        case .activityMeal,
+             .activityWorkout,
+             .activityTask:
             return Palette(
                 top: UIColor(
                     red: 0.30,

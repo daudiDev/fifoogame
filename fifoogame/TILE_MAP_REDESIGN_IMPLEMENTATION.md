@@ -878,3 +878,376 @@ The following `MapGridRenderer` helpers are now explicitly `private`:
 - `cancelArtworkTask(for:)`
 
 No rendering behavior or UI semantics were changed in this pass.
+
+## Pass 5.21 — Meal Fixture Test Data
+
+Converted selected full-day DEBUG activity fixtures from `.task` to real `.meal` activity content so the playable Meal Path flow from Pass 5.19 can be exercised directly from the day map.
+
+Meal fixtures:
+
+- Completed path: `Breakfast Sandwich`
+- Chosen path: `Cheeseburger`
+- Alternate path 3: `Chicken Burrito Bowl`
+
+`makeFullDayFixtureNode(...)` now accepts an `ActivityNodeContent.ActivityType` parameter (default `.task`). When `.meal` is supplied it attaches an `ActivityMealNodeSummary` with a deterministic dummy image URL and uses the same dummy image as the stop-card artwork. Non-meal fixtures remain task activities.
+
+## Pass 5.22 — Activity kinds + full-screen ActivityMeal player
+
+### Activity kind split
+
+User-facing/domain `GameNodeKind` is now split into:
+
+- `activityMeal`
+- `activityWorkout`
+- `activityTask`
+
+The persisted `GameNodeContent.activity(ActivityNodeContent)` payload remains as a backward-compatible transport envelope so existing Socket.IO / Codable data does not break. `GameNodeContent.kind` derives the new distinct kind from `ActivityNodeContent.resolvedActivityType`.
+
+Factory, placeholder, editor labels and path-builder presentation were updated to understand the three distinct kinds.
+
+### ActivityMeal presentation
+
+Tapping an ActivityMeal now resolves to `showActivityMeal` and DayMapView presents `ActivityMealExperienceView` with `fullScreenCover` rather than the generic editor sheet.
+
+The existing `MealPlayablePathView.swift` file was intentionally repurposed to contain the new full-screen experience, avoiding the need to add another Swift file to the Xcode target.
+
+### Welcome page
+
+The Welcome state contains:
+
+- full-screen meal artwork background
+- ActivityMeal title + exit control
+- editable start/end time fields
+- suggested meal name
+- bottom Skip / Play / Done controls
+
+Skip requires confirmation, calls the existing `SocketManager.deleteGameNode(id:)`, and dismisses so the map redraws without the stop.
+
+Done requires confirmation, marks the ActivityMeal completed via the existing Activity completion pathway, and returns to the map.
+
+Play saves current edits and enters Action mode.
+
+Editing the start time also updates the semantic `GameMapNode.time`; a road-vertex meal is detached to a free coordinate at the same progress value, matching the existing Activity editor behavior.
+
+### Action page
+
+The Action state uses a vertically paged, card-stack presentation inspired by the supplied stacked-card UI references. Every step has:
+
+- step number + title + exit control
+- large stacked-card interaction area
+- branch-specific inputs/details
+- instruction text and optional duration
+- Pause / Resume control
+- Step Completed control
+
+Vertical gesture behavior:
+
+- swipe upward (scroll down / forward) without completing -> current step is recorded as skipped and the next step opens
+- swipe downward (scroll up / back) -> previous step opens
+- completed/skipped status is visible when revisiting a step
+
+### Meal flow
+
+The first two pages are always:
+
+1. Confirm/change suggested meal
+2. Confirm/change meal source
+
+The source then produces one of three branches:
+
+**Home-made**
+
+- recipe
+- ingredients
+- optional grocery sourcing (only when ingredients are not ready and groceries are needed)
+- preparation
+- step-by-step cooking
+- plating/serving
+- enjoy meal
+
+**Restaurant / Store**
+
+- venue/store, location and hours
+- availability
+- dine-in / takeout / delivery / store-pickup selection
+- fulfillment/travel/order behavior
+- prepare to eat
+- enjoy meal
+
+Store-bought ready meals intentionally live in the same source branch as restaurants.
+
+**Hosted / Invited**
+
+- host/event
+- invitation confirmation
+- optional contribution
+- travel
+- join/serve
+- enjoy meal
+
+This branch intentionally requires less user management because the host controls most preparation.
+
+### Persistence
+
+`ActivityMealNodeSummary` now optionally stores `ActivityMealExecutionPlanNodeSummary`, including:
+
+- selected meal
+- source
+- current step
+- completed/skipped step IDs
+- pause state
+- home-made recipe/ingredient state
+- restaurant/store details and fulfillment mode
+- hosted meal details
+
+The field is optional, so older persisted meal nodes still decode. Progress is saved when pausing, completing/skipping steps, exiting, and completing the meal.
+
+### Legacy Pass 5.19 UI
+
+The old embedded Meal Path section was removed from `ActivityTypeEditorView`; ActivityMeal playback now belongs exclusively to the full-screen experience.
+
+## Pass 5.23 — GameNodeEditorForm Activity Transport-Case Fix
+
+Fixed the Xcode compile error in `GameNodeEditorForm.swift` where a switch over `GameNodeContent` incorrectly matched the new `GameNodeKind` cases `.activityMeal`, `.activityWorkout`, and `.activityTask`.
+
+`GameNodeContent` intentionally retains the backward-compatible `.activity(ActivityNodeContent)` transport envelope. The three distinct activity families are exposed through `GameNodeContent.kind` as `GameNodeKind.activityMeal`, `.activityWorkout`, and `.activityTask`.
+
+Therefore `contentSection` now correctly matches `case .activity:`. All switches over `node.content.kind` continue to use the three separate activity kinds.
+
+## Pass 5.24 — Meal full-screen layout safety
+
+Focused styling pass only. The ActivityMeal Welcome and Action logic is unchanged.
+
+- Removed the root-level `ignoresSafeArea()` so foreground controls no longer render under the status bar, Dynamic Island/notch, or home indicator. Background imagery/material still renders edge-to-edge independently.
+- Reworked the Welcome page around `GeometryReader` so foreground spacing adapts to short iPhones.
+- Welcome content now uses safe-area-aware top/bottom padding, compact vertical spacing on short screens, a responsive meal title size, a two-line cap, and minimum scale factor.
+- The Welcome bottom controls remain inside the available height rather than being pushed below the screen.
+- Added intentional top breathing room to the Action page.
+- The Action page no longer ignores all safe areas; its background remains edge-to-edge while its foreground stays inset.
+- Added compact-height behavior for action spacing/instruction text and a responsive stacked-card deck height (270...330 points).
+- No action-step business logic or branching was changed in this pass.
+
+## Pass 5.25 — ActivityMeal Welcome Full-Screen Edge-to-Edge
+
+Focused styling-only refinement to the ActivityMeal Welcome page:
+
+- Restored the Welcome page to true edge-to-edge full-screen rendering with `.ignoresSafeArea()` on the Welcome-page root.
+- Both the meal background and Welcome foreground now occupy the full device bounds.
+- Replaced safe-area-derived foreground offsets with deliberate internal vertical padding so the design remains visually full-screen while controls stay comfortably away from device edges.
+- Standard-height devices use 72 pt top / 48 pt bottom padding.
+- Shorter devices use 54 pt top / 34 pt bottom padding.
+- Action Page layout and all meal workflow logic are unchanged from Pass 5.24.
+
+## Pass 5.26 — Welcome page time-picker polish
+
+- Removed the small `ACTIVITY MEAL` label from the Welcome page header; the activity title remains.
+- Replaced Start/End text fields with tappable time controls.
+- Tapping either time opens an in-place bottom overlay containing a wheel-style `DatePicker` for hour/minute selection, so the software keyboard is never shown.
+- The picker writes the selected wall-clock time back using the existing `DayTime.displayClockString` format.
+- The Pass 5.25 full-screen / ignore-safe-area Welcome page styling is otherwise unchanged.
+
+## Pass 5.28 — ActivityMeal action-flow controls and management sheets
+
+- Action paging behavior changed: an upward swipe / scroll-down now marks the current action step **Completed** and advances. Explicit skipping is done only with the new **Skip Step** button. The previous Pause and Step Completed buttons were removed.
+- The Action-page X now saves the draft and returns to the ActivityMeal Welcome page rather than dismissing the full-screen meal experience. Returning to Action resumes the current step instead of forcing step 1.
+- Confirm Meal now has an explicit confirmation checkbox and a Browse Meals sheet with search and selectable suggestions.
+- Choose Recipe now shows a non-editable selected recipe, a View Recipe sheet, and a Browse Recipes sheet. Selecting a recipe closes the sheet and rebuilds the recipe-dependent steps.
+- Check Ingredients now opens an editable Ingredients sheet.
+- Source Ingredients now opens an editable Shopping List and a Relevant Stores sheet with distance, open/closed state and hours.
+- Removed the monolithic Prepare Ingredients and Cook Step-by-Step pages. Each selected recipe instruction now becomes its own action page; timed instructions include an interactive countdown timer.
+- Restaurant/Store selection is non-editable on the action card and now uses a searchable Browse Restaurants / Stores sheet.
+- Fulfillment is now a 2x2 option grid (Dine In, Takeout, Delivery, Store Pickup) with a contextual external link; delivery uses DoorDash and the other modes open venue details in Maps.
+- Hosted meals now include a Friends/Hosts picker, optional Chat button when the selected friend supports chat, editable bring-items sheet, and editable travel address with Apple Maps and Google Maps links.
+- Enjoy Meal now contains a prominent Done button in the action card.
+- `ActivityMealExecutionPlanNodeSummary` gained only optional richer execution fields (`mealConfirmed`, ingredients, shopping list, selected ingredient store, selected host ID and contribution items) to preserve decoding compatibility with previously persisted meal nodes.
+- The current browse/store/friend catalogs are local UI fixtures so this flow can be exercised before live restaurant/store/friends data is connected.
+
+## Pass 5.29 — ActivityWorkout class vs independent experience
+
+ActivityWorkout now has an explicit two-mode execution model:
+
+- `ActivityWorkoutType.guidedClass`
+- `ActivityWorkoutType.independent`
+
+`ActivityWorkoutNodeSummary.workoutType` is optional so workout snapshots saved before this pass continue to decode. `resolvedWorkoutType` falls back to the existing `workoutFormat` / title / description text for older data (for example `Class`, `Guided`, `Studio`, `Trainer`, `Bootcamp`). New ActivityWorkout nodes default to Independent, and the Activity editor includes a segmented Workout Type control.
+
+### Guided / class workouts
+
+Tapping a guided/class ActivityWorkout no longer opens the generic node editor. `DayMapView` presents `ActivityWorkoutClassExperienceView` full-screen.
+
+The class details screen follows the ActivityMeal Welcome-page visual language:
+
+- edge-to-edge workout image background + dark gradient
+- workout/class title and close button
+- guided/class badge and status
+- fixed start/end-time card
+- location
+- duration
+- trainer + trainer rating
+- categories/class type
+- workout rating
+- participant count when present
+- bottom **Browse Workouts** button
+
+Class time is intentionally immutable from this screen. Tapping the time card opens an alert explaining that the class owns its schedule. The alert offers **Browse Workouts** so the user can choose a different scheduled class instead of manually changing time.
+
+### Independent workouts
+
+Tapping an Independent ActivityWorkout opens the existing Fifoo Play flow through `SocketManager.isShowingPlay`, rather than showing an additional workout-details screen.
+
+When Play was opened from an ActivityWorkout stop only, the Play overlay adds:
+
+- a tappable scheduled-time chip
+- **Browse Workouts**
+
+The time chip opens a wheel-style time picker. Independent workouts can be moved freely; changing the time updates `ActivityNodeContent.startTime`, `ActivityWorkoutNodeSummary.selectedWorkoutTime`, the computed end time, and the `GameMapNode` time. A road-vertex workout is detached to a free coordinate at the same progress value when its time changes, matching the ActivityMeal time-edit behavior.
+
+Generic Play entry points still call `PlayView()` with no ActivityWorkout controls, preserving the existing UI.
+
+### Browse Workouts
+
+Both guided/class and independent workout experiences use the same searchable `ActivityWorkoutBrowseSheet`. The current catalog is local development scaffolding with both scheduled classes and independent Fifoo Play workouts; it is represented as `ActivityWorkoutNodeSummary` values so backend results can replace the fixture array without changing the selection flow.
+
+Selecting another class updates the node to that class's fixed time/location/trainer/details and redraws the map at the new time. Selecting an independent workout preserves the user's current independent schedule. The user can also switch between class and independent modes from Browse Workouts; the presentation transitions accordingly (class details ↔ Fifoo Play).
+
+For the local independent browse fixtures, `SocketManager.activateIndependentWorkout(from:)` resets and loads a matching Fifoo Play exercise template. The full-body fixture uses the complete existing sample workout, Upper Body uses the bench/strength exercise, and Cardio + Core uses the plank/treadmill exercises. Server-provided workouts continue to use the currently loaded exercise payload until the backend workout catalog supplies full exercise data.
+
+---
+
+## Pass 5.30 — ActivityWorkout replaces Play stop kind
+
+### GameNodeKind
+
+- Removed the user-facing `GameNodeKind.play` case.
+- Independent Fifoo Play workouts are now represented as `GameNodeKind.activityWorkout`, the same ActivityWorkout family introduced in Pass 5.29.
+- `GameNodeFactory`, route-builder kind labels/icons, and placeholder-image kind styling no longer expose a Play stop type.
+- The legacy `GameNodeContent.play(PlayNodeContent)` transport case remains decodable only for backward compatibility. Its resolved `kind` is now `.activityWorkout`, so old Play payloads do not recreate a separate Play kind.
+
+### Sample stops
+
+- Replaced both sample Play stops in `SampleGameNodes.swift` with real ActivityWorkout stops:
+  - `Fifoo Strength Session` — Independent, opens Fifoo Play.
+  - `HIIT Studio Class` — Guided/Class, includes studio, duration, trainer, rating and fixed schedule details.
+- Updated the full-day debug fixture so approximately five generic Task examples are displaced by ActivityWorkout examples while preserving the existing route geometry. The fixture now includes both Guided/Class and Independent workouts across completed and chosen path states, including:
+  - Sunrise Mobility — Independent
+  - Morning Yoga Class — Guided/Class
+  - Lunch Walk — Independent
+  - Upper Body Strength — Independent
+  - Evening Bootcamp Class — Guided/Class
+  - Evening Recovery — Independent
+- Meal samples and route/path semantics are unchanged.
+
+### Compatibility
+
+- Existing serialized `.play` content is intentionally retained as a legacy transport payload so old persisted map data can still decode.
+- Legacy serialized `GameNodeKind` raw value `"play"` is also decoded as `.activityWorkout`; new encodes never write `"play"`.
+- New stops cannot be created as Play; `GameNodeKind.allCases` now exposes ActivityWorkout instead.
+
+## Pass 5.31 — ActivityWorkout class check-in + class browsing from Fifoo Play
+
+- Guided/Class ActivityWorkout detail view now places a stronger dark veil and gradient between the background artwork and foreground class metadata.
+- Replaced the single full-width Browse Workouts footer with a two-control row:
+  - primary `Check In` control;
+  - smaller `Browse Workouts` control.
+- Class check-in remains available before class start and through the first 10 minutes after the scheduled start time. The control refreshes periodically with `TimelineView`; after the grace period it becomes the disabled `Workout Completed` state.
+- Successful check-in writes `Checked In` to both `ActivityWorkoutNodeSummary.workoutStatus` and the parent Activity status through the existing `onUpdate` bridge.
+- Independent ActivityWorkout/Fifoo Play now exposes a second `Browse Workout Classes` control.
+- Added `ActivityWorkoutBrowseScope` so the existing browse sheet can be reused either for all workouts or classes only. Class-only browsing retains the same selection transition: selecting a class closes Fifoo Play and presents the fixed-time class detail experience.
+- Generic `PlayView()` callers remain unchanged because all ActivityWorkout browse/time callbacks are optional.
+
+
+## Pass 5.32 — ActivityWorkout browse placement + class contact details
+
+- Removed both workout-browse buttons from the per-exercise `PlayOverlay`.
+  - Independent ActivityWorkout Play keeps only its editable scheduled-time control there.
+  - `Browse Workout Classes` now lives at the workout-level `WorkoutStatusOverlay` and is available on the initial Welcome state and paused/resume state when Play was opened from an independent ActivityWorkout stop.
+  - Generic `PlayView()` entry points still hide ActivityWorkout-only controls because the browse callback is optional.
+- `ActivityWorkoutNodeSummary` now has optional `phone` and `website` contact fields. They are optional for backward compatibility and are normalized like the other string metadata.
+- Guided/class ActivityWorkout details now:
+  - keep the existing dark image veil;
+  - show Class and Trainer side-by-side in the same row;
+  - no longer render workout or trainer ratings;
+  - show tappable Phone and Website contact cards when available.
+- Added contact fixtures to the guided-class browse catalog, the full-day debug workout-class fixtures, and the sample guided class so the UI can be exercised immediately.
+- Kept the Pass 5.31 Check In / Workout Completed timing behavior unchanged.
+
+## Pass 5.33 — ActivityTask full-screen welcome-style view
+
+- ActivityTask stops no longer open the generic `GameNodeEditorView` sheet. `DayMapView` now presents `ActivityTaskExperienceView` full-screen.
+- ActivityTask visual treatment mirrors the ActivityMeal welcome page: edge-to-edge task image, dark readability gradient, generous internal top/bottom padding, title + close, and wheel-style editable Start/End time controls.
+- Added task-relevant detail treatment for status, description, location, date, and attached image/video counts when present.
+- Removed Play entirely from ActivityTask presentation. Bottom controls are only `Skip` and `Done`.
+- `Skip` confirms, marks the Activity status `Skipped`, emits the existing Activity skip action, and returns to the map.
+- `Done` confirms, marks the Activity status `Completed`, emits the existing Activity completed action, and returns to the map.
+- Closing with X preserves timing edits without changing completion state.
+- Editing the task Start time moves the task's map coordinate while preserving its progress/X position, matching the existing ActivityMeal scheduling semantics.
+
+## Pass 5.34 — ActivityTask time preload + conventional Post details
+
+### ActivityTask time preload
+
+- `ActivityTaskExperienceView` now seeds its draft with the latest `GameMapNode` every time the full-screen task view appears, rather than relying only on SwiftUI's initial `@State` construction.
+- If an older ActivityTask payload has no explicit `Activity.startTime`, the displayed Start time falls back to the stop's canonical `GameMapNode.time`.
+- If `endTime` is missing, a one-hour fallback is preloaded for the UI. Existing non-empty Activity times are preserved.
+- This keeps the Start/End controls populated immediately when a task stop opens, including older task payloads that were created before the full-screen ActivityTask UI.
+
+### Post details redesign
+
+- `GameNodePostView` now uses a conventional social-post hierarchy inspired by the supplied reference:
+  1. poster/profile header;
+  2. post copy, tags, media, save/comment summary, and linked content;
+  3. comments thread in the same vertical `ScrollView`;
+  4. fixed reply composer at the bottom via `safeAreaInset`.
+- Added optional `PostNodeCommentSnapshot` data to `PostNodeSnapshot`. The field is optional so existing persisted Post nodes remain decodable.
+- Comment rows support avatar/name/date, pinned state, body, reply count, and like count. Tapping Reply prefills an @mention in the fixed composer.
+- Sending from the composer creates an optimistic local `You` comment and emits the new `.submitReply(text:)` map action hook. The social backend remains authoritative for persistence/reconciliation.
+- Updated the sample Post stop with representative comments so the redesigned screen can be exercised immediately.
+
+## Pass 5.35 — Add Stop creation flows + local media picker/Cloudinary upload
+
+### ActivityMeal creation
+
+- Tapping Meal in `Add Stop to Path` now opens a dedicated searchable **Browse Meals** screen instead of the generic Activity editor.
+- Search supports both catalog filtering and a `Use “search terms”` action so a user can create a custom meal from what they typed.
+- Selecting a meal opens a second review screen with:
+  - selected meal preview/details;
+  - editable meal title;
+  - editable Start and End time;
+  - Save.
+- Saving creates the ActivityMeal stop, synchronizes its semantic map time, validates/normalizes it, and uses the existing `onAdd` bridge so `SocketManager` refreshes stops/path rendering exactly like the previous Add Stop flow.
+- Browse Meals also exposes **Add a Meal Photo**. The image is loaded through `PhotosPicker`, previewed, and Apple's on-device Vision classifier seeds an editable meal title. The user can correct the title before saving.
+- Meal photos are uploaded to Cloudinary on Save and the returned HTTPS URL becomes both the SuggestedMeal image and the stop image.
+
+### ActivityWorkout creation
+
+- Tapping Workout now opens searchable **Browse Workouts**, reusing the existing ActivityWorkout browse catalog and models.
+- Guided/Class and Independent workouts are grouped separately.
+- Selection opens a workout-detail review screen before Save.
+- Independent workouts expose editable Start/End times.
+- Guided/Class workouts preserve the established fixed-class-time rule; the review screen displays the class schedule read-only and directs the user back to browse another class to change time.
+- Save uses the same ActivityWorkout selection helpers already used by existing stops, then validates and adds the stop through the normal map pipeline.
+
+### ActivityTask creation
+
+- Task creation is now a single-page form; the old `Activity Type` section is not shown in the Add Stop flow.
+- The page contains title, description, location, Start/End time, and a multi-image `PhotosPicker`.
+- Selected images are previewed locally with removal controls before Save.
+- On Save, images are uploaded to Cloudinary, their remote URLs are stored in `ActivityTaskNodeSummary.imageURLs`, and the first image becomes the ActivityTask stop image.
+
+### Tip / Request creation
+
+- Preserved the existing creation fields: fixed Post Type + Subject.
+- Removed manual Image URL and Video URL entry from the Add Stop flow.
+- Added multi-image and multi-video pickers with local previews and removal controls.
+- Images/videos upload to Cloudinary on Save; the resulting URLs populate `postImageURLs`, `postVideoURLs`, `postMainMediaURL`, `postMainMediaType`, and `postMediaCount` before the existing node normalization/add pipeline runs.
+
+### Cloudinary configuration
+
+`Info.plist` now contains empty configuration slots for:
+
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_UNSIGNED_UPLOAD_PRESET`
+
+The same names may be supplied as process/environment variables during development. The client uses an **unsigned upload preset** and never stores an API secret in the iOS app. If signed uploads are desired later, the signature/API-secret work should live in the existing backend and the iOS upload service can consume the short-lived signature instead.
+
+This pass intentionally uses Cloudinary's HTTPS Upload API directly so it does not require adding a new Swift package to the archived project. The upload layer is isolated inside `AddGameNodeView.swift` and can be swapped to Cloudinary's iOS SDK without changing the picker or Add Stop flows.

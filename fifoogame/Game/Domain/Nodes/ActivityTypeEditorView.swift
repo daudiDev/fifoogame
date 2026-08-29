@@ -93,25 +93,6 @@ private extension ActivityTypeEditorView {
 
         Form {
 
-            Section {
-
-                MealPlayablePathView(
-                    mealTitle:
-                        mealBinding
-                            .wrappedValue
-                            .title,
-                    scheduledTime:
-                        activityStartTime
-                )
-
-            } header: {
-
-                Text(
-                    "Playable Meal Path"
-                )
-            }
-
-
             Section(
                 "Suggested Meal"
             ) {
@@ -293,6 +274,33 @@ private extension ActivityTypeEditorView {
     var workoutEditor: some View {
 
         Form {
+
+            Section(
+                "Workout Type"
+            ) {
+                Picker(
+                    "Type",
+                    selection: workoutTypeBinding
+                ) {
+                    ForEach(
+                        ActivityWorkoutType.allCases,
+                        id: \.self
+                    ) { type in
+                        Text(type.displayName)
+                            .tag(type)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(
+                    workoutTypeBinding.wrappedValue == .guidedClass
+                    ? "Class times are owned by the class schedule. Choose another class to change time."
+                    : "Independent workouts use Fifoo Play and can be scheduled at any time."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
 
             Section(
                 "Workout"
@@ -712,6 +720,20 @@ private extension ActivityTypeEditorView {
     }
 
 
+    var workoutTypeBinding:
+        Binding<ActivityWorkoutType> {
+
+        Binding {
+            workoutBinding.wrappedValue.resolvedWorkoutType
+        } set: { newValue in
+            var workout = workoutBinding.wrappedValue
+            workout.workoutType = newValue
+            workout.workoutFormat = newValue.displayName
+            workoutBinding.wrappedValue = workout
+        }
+    }
+
+
     var workoutBinding:
         Binding<ActivityWorkoutNodeSummary> {
 
@@ -853,9 +875,11 @@ private extension ActivityTypeEditorView {
             distance:
                 "",
             workoutFormat:
-                "",
+                "Independent",
             rating:
-                ""
+                "",
+            workoutType:
+                .independent
         )
     }
 

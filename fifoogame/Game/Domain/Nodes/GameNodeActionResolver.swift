@@ -50,12 +50,26 @@ enum GameNodeActionResolver {
 
         case let .activity(content):
 
-            return .showActivity(
-                nodeID:
-                    node.id,
-                activityID:
-                    content.activityID
-            )
+            switch content.resolvedActivityType {
+
+            case .meal:
+                return .showActivityMeal(
+                    nodeID: node.id,
+                    activityID: content.activityID
+                )
+
+            case .workout:
+                return .showActivityWorkout(
+                    nodeID: node.id,
+                    activityID: content.activityID
+                )
+
+            case .task:
+                return .showActivityTask(
+                    nodeID: node.id,
+                    activityID: content.activityID
+                )
+            }
 
 
         // =========================================

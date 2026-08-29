@@ -2874,6 +2874,19 @@ extension SocketManager {
                     )
             )
 
+        case .submitReply:
+
+            // The map-level action intentionally records the reply event but
+            // leaves the authoritative comment payload to the social backend.
+            // GameNodePostView adds an optimistic local row immediately.
+            recordApplicationAction(
+                .postRespond,
+                metadata:
+                    nodeMetadata(
+                        node
+                    )
+            )
+
         case .save:
 
             // Optimistic local state for the map snapshot. Step 2 will emit
@@ -3641,6 +3654,70 @@ extension SocketManager {
 // =====================================================
 
 extension SocketManager {
+
+    /// Loads the selected independent ActivityWorkout into the existing Fifoo
+    /// Play engine. ActivityWorkout summaries intentionally do not duplicate
+    /// the full exercise payload; until the backend catalog supplies one, the
+    /// current exercise template is reused and reset for the selected workout.
+    func activateIndependentWorkout(
+        from summary: ActivityWorkoutNodeSummary
+    ) {
+
+        let isLocalBrowseWorkout =
+            summary.workoutID.hasPrefix("independent-")
+
+        var exercises =
+            isLocalBrowseWorkout
+            ? Self.sample.exercises
+            : workout.exercises
+
+        if summary.workoutID == "independent-upper-body" {
+            exercises = exercises.filter {
+                $0.name.localizedCaseInsensitiveContains("bench")
+            }
+        } else if summary.workoutID == "independent-cardio-core" {
+            exercises = exercises.filter { exercise in
+                exercise.name.localizedCaseInsensitiveContains("plank")
+                || exercise.name.localizedCaseInsensitiveContains("treadmill")
+            }
+        }
+
+        for index in exercises.indices {
+            exercises[index].status = .notStarted
+            exercises[index].stepsCompleted = 0
+            exercises[index].pedometerDistanceMeters = 0
+            exercises[index].floorsAscended = 0
+            exercises[index].floorsDescended = 0
+            exercises[index].averageCadence = nil
+            exercises[index].averagePace = nil
+            exercises[index].startedAt = nil
+            exercises[index].pausedAt = nil
+            exercises[index].resumedAt = nil
+            exercises[index].completedAt = nil
+            exercises[index].pausePeriods = []
+        }
+
+        workout = Workout(
+            id: UUID(uuidString: summary.workoutID) ?? UUID(),
+            name: summary.title,
+            description: summary.description,
+            exercises: exercises,
+            status: .notStarted,
+            startedAt: nil,
+            endedAt: nil,
+            pausedAt: nil,
+            resumedAt: nil,
+            pausePeriods: [],
+            currentWorkoutExerciseID: nil,
+            totalSteps: 0,
+            totalPedometerDistanceMeters: 0,
+            totalFloorsAscended: 0,
+            totalFloorsDescended: 0,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
 
     func closePlay(
         pauseActiveWorkout: Bool = true

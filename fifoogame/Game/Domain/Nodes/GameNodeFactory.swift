@@ -16,8 +16,9 @@ import Foundation
 
 /// The five content choices that can be created from AddGameNodeView.
 ///
-/// Meal / Workout / Task all produce an Activity node and seed the matching
-/// Activity payload. Tip / Request both produce a Post node and seed the
+/// Meal / Workout / Task produce distinct ActivityMeal / ActivityWorkout /
+/// ActivityTask node kinds while retaining the shared Activity transport
+/// payload for backward-compatible persistence. Tip / Request both produce a Post node and seed the
 /// Post snapshot with the matching postType.
 enum AddGameNodeType:
     String,
@@ -87,13 +88,13 @@ enum AddGameNodeType:
         switch self {
 
         case .meal:
-            return "Activity • SuggestedMeal"
+            return "ActivityMeal • SuggestedMeal"
 
         case .workout:
-            return "Activity • Workout"
+            return "ActivityWorkout • Workout"
 
         case .task:
-            return "Activity • Task"
+            return "ActivityTask • Task"
 
         case .tip:
             return "Post • Tip"
@@ -109,13 +110,13 @@ enum AddGameNodeType:
         switch self {
 
         case .meal:
-            return "Creates an Activity with Activity Type already set to Meal and initializes its SuggestedMeal data."
+            return "Creates an ActivityMeal stop and initializes its SuggestedMeal data."
 
         case .workout:
-            return "Creates an Activity with Activity Type already set to Workout and initializes its Workout data."
+            return "Creates an ActivityWorkout stop and initializes its Workout data."
 
         case .task:
-            return "Creates an Activity with Activity Type already set to Task and initializes its Task data."
+            return "Creates an ActivityTask stop and initializes its Task data."
 
         case .tip:
             return "Creates a Post with Post Type already set to Tip."
@@ -143,17 +144,6 @@ enum GameNodeFactory {
 
         switch kind {
 
-        case .play:
-
-            content =
-                .play(
-                    PlayNodeContent(
-                        title: "Play",
-                        image: nil
-                    )
-                )
-
-
         case .user:
 
             content =
@@ -166,13 +156,63 @@ enum GameNodeFactory {
                 )
 
 
-        case .activity:
+        case .activityMeal:
 
             content =
                 .activity(
                     ActivityNodeContent(
                         activityID: UUID().uuidString,
-                        title: "New Activity",
+                        title: "New Meal",
+                        startTime: time?.displayClockString ?? "",
+                        activityType: ActivityNodeContent.ActivityType.meal.rawValue,
+                        status: "Not Started",
+                        meal: ActivityMealNodeSummary(
+                            suggestedMealID: UUID().uuidString,
+                            title: "New Meal",
+                            estimatedTimeMinutes: 0,
+                            priceRange: ""
+                        ),
+                        image: nil
+                    )
+                )
+
+
+        case .activityWorkout:
+
+            content =
+                .activity(
+                    ActivityNodeContent(
+                        activityID: UUID().uuidString,
+                        title: "New Workout",
+                        startTime: time?.displayClockString ?? "",
+                        activityType: ActivityNodeContent.ActivityType.workout.rawValue,
+                        status: "Not Started",
+                        workout: ActivityWorkoutNodeSummary(
+                            activityWorkoutID: UUID().uuidString,
+                            workoutID: UUID().uuidString,
+                            title: "New Workout",
+                            location: "",
+                            categories: [],
+                            selectedWorkoutTime: time?.displayClockString ?? "",
+                            durationInSeconds: 0,
+                            durationText: "",
+                            distance: "",
+                            workoutFormat: "Independent",
+                            rating: "",
+                            workoutType: .independent
+                        ),
+                        image: nil
+                    )
+                )
+
+
+        case .activityTask:
+
+            content =
+                .activity(
+                    ActivityNodeContent(
+                        activityID: UUID().uuidString,
+                        title: "New Task",
                         startTime: time?.displayClockString ?? "",
                         description: nil,
                         activityType: ActivityNodeContent.ActivityType.task.rawValue,
@@ -180,7 +220,7 @@ enum GameNodeFactory {
                         task: ActivityTaskNodeSummary(
                             activityTaskID: UUID().uuidString,
                             taskID: UUID().uuidString,
-                            title: "New Activity",
+                            title: "New Task",
                             description: ""
                         ),
                         image: nil
@@ -340,9 +380,11 @@ enum GameNodeFactory {
                                 distance:
                                     "",
                                 workoutFormat:
-                                    "",
+                                    "Independent",
                                 rating:
-                                    ""
+                                    "",
+                                workoutType:
+                                    .independent
                             ),
                         task:
                             nil,

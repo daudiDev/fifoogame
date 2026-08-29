@@ -6,5 +6,9 @@
 	<array>
 		<string>chewy.ttf</string>
 	</array>
+	<key>CLOUDINARY_CLOUD_NAME</key>
+	<string></string>
+	<key>CLOUDINARY_UNSIGNED_UPLOAD_PRESET</key>
+	<string></string>
 </dict>
 </plist>

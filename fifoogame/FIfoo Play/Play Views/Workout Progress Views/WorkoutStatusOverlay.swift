@@ -24,6 +24,11 @@ struct WorkoutStatusOverlay: View {
     var showWorkoutStatusOverlay:
         Bool
 
+    /// Only non-nil when Fifoo Play was opened from an independent
+    /// ActivityWorkout stop. Browsing classes belongs to this workout-level
+    /// overlay rather than the per-exercise PlayOverlay.
+    let onBrowseWorkoutClasses: (() -> Void)?
+
 
     var body: some View {
 
@@ -44,7 +49,9 @@ struct WorkoutStatusOverlay: View {
                     geometry:
                         geometry,
                     showWorkoutStatusOverlay:
-                        $showWorkoutStatusOverlay
+                        $showWorkoutStatusOverlay,
+                    onBrowseWorkoutClasses:
+                        onBrowseWorkoutClasses
                 )
 
             } else if socketManager.workout.status == .paused {
@@ -53,7 +60,9 @@ struct WorkoutStatusOverlay: View {
                     geometry:
                         geometry,
                     showWorkoutStatusOverlay:
-                        $showWorkoutStatusOverlay
+                        $showWorkoutStatusOverlay,
+                    onBrowseWorkoutClasses:
+                        onBrowseWorkoutClasses
                 )
             }
         }
@@ -85,6 +94,8 @@ private struct WorkoutWelcome: View {
     @Binding
     var showWorkoutStatusOverlay:
         Bool
+
+    let onBrowseWorkoutClasses: (() -> Void)?
 
 
     var body: some View {
@@ -132,6 +143,31 @@ private struct WorkoutWelcome: View {
             }
 
             Spacer()
+
+            if let onBrowseWorkoutClasses {
+                Button {
+                    onBrowseWorkoutClasses()
+                } label: {
+                    Label(
+                        "Browse Workout Classes",
+                        systemImage: "person.2.fill"
+                    )
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(.white.opacity(0.12))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(.white.opacity(0.18), lineWidth: 1)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
+            }
 
             Button {
 
@@ -213,6 +249,8 @@ private struct WorkoutResumeView: View {
     var showWorkoutStatusOverlay:
         Bool
 
+    let onBrowseWorkoutClasses: (() -> Void)?
+
 
     var body: some View {
 
@@ -283,6 +321,31 @@ private struct WorkoutResumeView: View {
             )
 
             Spacer()
+
+            if let onBrowseWorkoutClasses {
+                Button {
+                    onBrowseWorkoutClasses()
+                } label: {
+                    Label(
+                        "Browse Workout Classes",
+                        systemImage: "person.2.fill"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.white.opacity(0.12))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(.white.opacity(0.18), lineWidth: 1)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
+            }
 
             Button {
 

@@ -273,6 +273,16 @@ enum GameNodeNormalizer {
                     workout.description = cleaned.isEmpty ? nil : cleaned
                 }
 
+                if let phone = workout.phone {
+                    let cleaned = clean(phone)
+                    workout.phone = cleaned.isEmpty ? nil : cleaned
+                }
+
+                if let website = workout.website {
+                    let cleaned = clean(website)
+                    workout.website = cleaned.isEmpty ? nil : cleaned
+                }
+
                 if var imageURLs = workout.imageURLs {
                     imageURLs = imageURLs.map { clean($0) }.filter { !$0.isEmpty }
                     workout.imageURLs = imageURLs.isEmpty ? nil : imageURLs
@@ -464,6 +474,24 @@ enum GameNodeNormalizer {
                         0,
                         snapshot.postSavedCount
                     )
+
+                if var comments = snapshot.comments {
+                    comments = comments.map { comment in
+                        var cleanedComment = comment
+                        cleanedComment.commentID = clean(comment.commentID)
+                        cleanedComment.userID = clean(comment.userID)
+                        cleanedComment.userName = clean(comment.userName)
+                        cleanedComment.userImageURL = clean(comment.userImageURL)
+                        cleanedComment.body = clean(comment.body)
+                        cleanedComment.createdAt = clean(comment.createdAt)
+                        cleanedComment.replyCount = max(0, comment.replyCount)
+                        cleanedComment.likeCount = max(0, comment.likeCount)
+                        return cleanedComment
+                    }
+                    .filter { !$0.body.isEmpty }
+
+                    snapshot.comments = comments
+                }
 
 
                 if snapshot.postID.isEmpty {

@@ -16,6 +16,24 @@ struct PlayView: View {
     private let socketManager = SocketManager.shared
     private let soundManager = WorkoutSoundManager.shared
 
+    /// ActivityWorkout integration. Generic Play entry points leave these nil,
+    /// preserving the original Fifoo Play UI. Independent ActivityWorkout
+    /// stops provide an editable schedule and may browse guided classes from
+    /// the workout status overlay.
+    let scheduledWorkoutTime: String?
+    let onEditScheduledWorkoutTime: (() -> Void)?
+    let onBrowseWorkoutClasses: (() -> Void)?
+
+    init(
+        scheduledWorkoutTime: String? = nil,
+        onEditScheduledWorkoutTime: (() -> Void)? = nil,
+        onBrowseWorkoutClasses: (() -> Void)? = nil
+    ) {
+        self.scheduledWorkoutTime = scheduledWorkoutTime
+        self.onEditScheduledWorkoutTime = onEditScheduledWorkoutTime
+        self.onBrowseWorkoutClasses = onBrowseWorkoutClasses
+    }
+
     @Environment(\.scenePhase)
     private var scenePhase
 
@@ -91,6 +109,12 @@ struct PlayView: View {
                             pauseWorkoutForExit()
                             
                         },
+
+                        scheduledWorkoutTime:
+                            scheduledWorkoutTime,
+
+                        onEditScheduledWorkoutTime:
+                            onEditScheduledWorkoutTime,
                         
                         liveMessages: socketManager.liveMessages
                         
@@ -106,7 +130,10 @@ struct PlayView: View {
                     WorkoutStatusOverlay(
                         geometry: geometry,
                         showWorkoutStatusOverlay:
-                            $showWorkoutStatusOverlay )
+                            $showWorkoutStatusOverlay,
+                        onBrowseWorkoutClasses:
+                            onBrowseWorkoutClasses
+                    )
                     .zIndex(50)
                 }
 

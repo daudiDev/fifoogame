@@ -330,9 +330,14 @@ private extension GameNodeEditorView {
 
         switch draft.content.kind {
 
-        case .activity:
+        case .activityMeal:
+            return "Meal"
 
-            return "Activity"
+        case .activityWorkout:
+            return "Workout"
+
+        case .activityTask:
+            return "Task"
 
         case .user:
 
@@ -454,7 +459,9 @@ private extension GameNodeEditorView {
 
         switch draft.content.kind {
 
-        case .activity:
+        case .activityMeal,
+             .activityWorkout,
+             .activityTask:
 
             if isActivityOnChosenPath {
 

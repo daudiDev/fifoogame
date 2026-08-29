@@ -1584,8 +1584,14 @@ private extension FutureRouteBuilderView {
         case .user:
             return "person.fill"
 
-        case .activity:
+        case .activityMeal:
+            return "fork.knife"
+
+        case .activityWorkout:
             return "figure.run"
+
+        case .activityTask:
+            return "checkmark.circle.fill"
 
         case .post:
             return "text.bubble.fill"
@@ -1595,9 +1601,6 @@ private extension FutureRouteBuilderView {
 
         case .hyperlink:
             return "link"
-            
-        case .play:
-            return "play"
             
         }
     }
@@ -1613,8 +1616,14 @@ private extension FutureRouteBuilderView {
         case .user:
             return "User"
 
-        case .activity:
-            return "Activity"
+        case .activityMeal:
+            return "Meal"
+
+        case .activityWorkout:
+            return "Workout"
+
+        case .activityTask:
+            return "Task"
 
         case .post:
             return "Post"
@@ -1624,9 +1633,6 @@ private extension FutureRouteBuilderView {
 
         case .hyperlink:
             return "Link"
-            
-        case .play:
-            return "Play"
             
         }
     }

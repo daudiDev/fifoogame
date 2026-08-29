@@ -25,6 +25,43 @@ struct DayMapView: View {
 
 
     @State
+    private var presentedActivityMealNodeID:
+        GameNodeID?
+
+
+    @State
+    private var presentedActivityWorkoutNodeID:
+        GameNodeID?
+
+
+    @State
+    private var presentedActivityTaskNodeID:
+        GameNodeID?
+
+
+    /// Non-nil only while Fifoo Play was opened from an independent
+    /// ActivityWorkout stop. Generic Play entry points leave this nil.
+    @State
+    private var activeIndependentWorkoutNodeID:
+        GameNodeID?
+
+
+    @State
+    private var presentedIndependentWorkoutBrowseNodeID:
+        GameNodeID?
+
+
+    @State
+    private var presentedIndependentWorkoutClassBrowseNodeID:
+        GameNodeID?
+
+
+    @State
+    private var presentedIndependentWorkoutTimeNodeID:
+        GameNodeID?
+
+
+    @State
     private var presentedMediaNodeID:
         GameNodeID?
 
@@ -215,8 +252,29 @@ struct DayMapView: View {
                     )
                 }
                 
-                if (socketManager.isShowingPlay) {
-                    PlayView()
+                if socketManager.isShowingPlay {
+
+                    if let workoutNodeID = activeIndependentWorkoutNodeID,
+                       let workoutNode = store.gameNode(id: workoutNodeID),
+                       case let .activity(activityContent) = workoutNode.content,
+                       activityContent.resolvedActivityType == .workout,
+                       activityContent.workout?.resolvedWorkoutType == .independent {
+
+                        PlayView(
+                            scheduledWorkoutTime: activityContent.startTime,
+                            onEditScheduledWorkoutTime: {
+                                presentedIndependentWorkoutTimeNodeID =
+                                    workoutNodeID
+                            },
+                            onBrowseWorkoutClasses: {
+                                presentedIndependentWorkoutClassBrowseNodeID =
+                                    workoutNodeID
+                            }
+                        )
+
+                    } else {
+                        PlayView()
+                    }
                 }
         
 
@@ -525,7 +583,81 @@ struct DayMapView: View {
                 false,
             futureRoutePreviewDidChange
         )
+
+        .onChange(
+            of: socketManager.isShowingPlay
+        ) { _, isShowing in
+            if !isShowing {
+                activeIndependentWorkoutNodeID = nil
+                presentedIndependentWorkoutBrowseNodeID = nil
+                presentedIndependentWorkoutClassBrowseNodeID = nil
+                presentedIndependentWorkoutTimeNodeID = nil
+            }
+        }
         
+        .sheet(
+            item:
+                $presentedIndependentWorkoutBrowseNodeID
+        ) { nodeID in
+
+            if let node = store.gameNode(id: nodeID),
+               case let .activity(activityContent) = node.content,
+               let workout = activityContent.workout {
+
+                ActivityWorkoutBrowseSheet(
+                    selectedWorkoutID: workout.workoutID
+                ) { option in
+                    selectWorkoutFromIndependentPlay(
+                        option,
+                        nodeID: nodeID
+                    )
+                }
+            }
+        }
+
+        .sheet(
+            item:
+                $presentedIndependentWorkoutClassBrowseNodeID
+        ) { nodeID in
+
+            if let node = store.gameNode(id: nodeID),
+               case let .activity(activityContent) = node.content,
+               let workout = activityContent.workout {
+
+                ActivityWorkoutBrowseSheet(
+                    selectedWorkoutID: workout.workoutID,
+                    scope: .classesOnly
+                ) { option in
+                    selectWorkoutFromIndependentPlay(
+                        option,
+                        nodeID: nodeID
+                    )
+                    presentedIndependentWorkoutClassBrowseNodeID = nil
+                }
+            }
+        }
+
+        .sheet(
+            item:
+                $presentedIndependentWorkoutTimeNodeID
+        ) { nodeID in
+
+            if let node = store.gameNode(id: nodeID) {
+                ActivityWorkoutScheduleTimePickerSheet(
+                    node: node
+                ) { newTime in
+                    let updated =
+                        activityWorkoutUpdatingIndependentSchedule(
+                            node,
+                            to: newTime,
+                            roadGraph: store.roadGraph
+                        )
+
+                    socketManager.updateGameNode(updated)
+                }
+            }
+        }
+
         .sheet(
             item:
                 $presentedNodeID
@@ -592,6 +724,96 @@ struct DayMapView: View {
             }
         }
         
+        .fullScreenCover(
+            item:
+                $presentedActivityMealNodeID
+        ) { nodeID in
+
+            if let node =
+                store.gameNode(
+                    id:
+                        nodeID
+                )
+            {
+                ActivityMealExperienceView(
+                    node: node,
+                    roadGraph: store.roadGraph,
+                    onUpdate: { updatedNode in
+                        socketManager.updateGameNode(updatedNode)
+                    },
+                    onDelete: {
+                        socketManager.deleteGameNode(id: node.id)
+                    },
+                    onCompleted: { completedNode in
+                        socketManager.handleActivityNodeAction(
+                            .completed,
+                            node: completedNode
+                        )
+                        onActivityAction?(
+                            .completed,
+                            completedNode
+                        )
+                    }
+                )
+            }
+        }
+
+        .fullScreenCover(
+            item:
+                $presentedActivityWorkoutNodeID
+        ) { nodeID in
+
+            if let node = store.gameNode(id: nodeID) {
+                ActivityWorkoutClassExperienceView(
+                    node: node,
+                    roadGraph: store.roadGraph,
+                    onUpdate: { updatedNode in
+                        socketManager.updateGameNode(updatedNode)
+                    },
+                    onSwitchToIndependent: { updatedNode in
+                        presentedActivityWorkoutNodeID = nil
+                        openIndependentWorkout(updatedNode)
+                    }
+                )
+            }
+        }
+
+        .fullScreenCover(
+            item:
+                $presentedActivityTaskNodeID
+        ) { nodeID in
+
+            if let node = store.gameNode(id: nodeID) {
+                ActivityTaskExperienceView(
+                    node: node,
+                    roadGraph: store.roadGraph,
+                    onUpdate: { updatedNode in
+                        socketManager.updateGameNode(updatedNode)
+                    },
+                    onSkip: { skippedNode in
+                        socketManager.handleActivityNodeAction(
+                            .skip,
+                            node: skippedNode
+                        )
+                        onActivityAction?(
+                            .skip,
+                            skippedNode
+                        )
+                    },
+                    onCompleted: { completedNode in
+                        socketManager.handleActivityNodeAction(
+                            .completed,
+                            node: completedNode
+                        )
+                        onActivityAction?(
+                            .completed,
+                            completedNode
+                        )
+                    }
+                )
+            }
+        }
+
         .fullScreenCover(
             item:
                 $presentedPostNodeID
@@ -1582,12 +1804,31 @@ private extension DayMapView {
                 nodeID
 
 
-        case let .showActivity(
+        case let .showActivityMeal(
             nodeID,
             _
         ):
 
-            presentedNodeID =
+            presentedActivityMealNodeID =
+                nodeID
+
+
+        case let .showActivityWorkout(
+            nodeID,
+            _
+        ):
+
+            presentActivityWorkout(
+                nodeID: nodeID
+            )
+
+
+        case let .showActivityTask(
+            nodeID,
+            _
+        ):
+
+            presentedActivityTaskNodeID =
                 nodeID
 
 
@@ -2150,3 +2391,100 @@ private struct AlternateRoutePreviewOverlay: View {
     }
 }
 
+
+
+// =====================================================
+// MARK: - ActivityWorkout Presentation (Pass 5.29)
+// =====================================================
+
+private extension DayMapView {
+
+    func presentActivityWorkout(
+        nodeID: GameNodeID
+    ) {
+
+        guard let node = store.gameNode(id: nodeID),
+              case let .activity(content) = node.content,
+              content.resolvedActivityType == .workout else {
+            presentedNodeID = nodeID
+            return
+        }
+
+        let workoutType =
+            content.workout?.resolvedWorkoutType
+            ?? .independent
+
+        switch workoutType {
+        case .guidedClass:
+            activeIndependentWorkoutNodeID = nil
+
+            if socketManager.isShowingPlay {
+                socketManager.closePlay(
+                    pauseActiveWorkout: false
+                )
+            }
+
+            presentedActivityWorkoutNodeID = nodeID
+
+        case .independent:
+            openIndependentWorkout(node)
+        }
+    }
+
+
+    func openIndependentWorkout(
+        _ node: GameMapNode
+    ) {
+
+        guard case let .activity(content) = node.content,
+              let workout = content.workout else {
+            return
+        }
+
+        presentedActivityWorkoutNodeID = nil
+        activeIndependentWorkoutNodeID = node.id
+
+        socketManager.activateIndependentWorkout(
+            from: workout
+        )
+
+        socketManager.openPlay()
+    }
+
+
+    func selectWorkoutFromIndependentPlay(
+        _ option: ActivityWorkoutBrowseOption,
+        nodeID: GameNodeID
+    ) {
+
+        guard let node = store.gameNode(id: nodeID) else {
+            return
+        }
+
+        let updated =
+            activityWorkoutApplyingSelection(
+                option,
+                to: node,
+                roadGraph: store.roadGraph
+            )
+
+        socketManager.updateGameNode(updated)
+        presentedIndependentWorkoutBrowseNodeID = nil
+        presentedIndependentWorkoutClassBrowseNodeID = nil
+
+        switch option.summary.resolvedWorkoutType {
+        case .independent:
+            activeIndependentWorkoutNodeID = nodeID
+            socketManager.activateIndependentWorkout(
+                from: option.summary
+            )
+
+        case .guidedClass:
+            socketManager.closePlay(
+                pauseActiveWorkout: false
+            )
+            activeIndependentWorkoutNodeID = nil
+            presentedActivityWorkoutNodeID = nodeID
+        }
+    }
+}
