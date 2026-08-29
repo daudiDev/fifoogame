@@ -98,6 +98,32 @@ final class SocketManager {
         false
 
 
+    // MARK: - Account / Social Hub State
+
+    private(set) var conversations: [SocialConversationSummary] = []
+    private(set) var friends: [SocialFriend] = []
+    private(set) var postsFeed: [SocialPost] = []
+    private(set) var activePostReplies: [SocialPostReply] = []
+    private(set) var activePostID: UUID?
+    private(set) var activeConversationID: UUID?
+    private(set) var activeConversationMessages: [SocialMessage] = []
+    private(set) var isConversationsLoading = false
+    private(set) var isFriendsLoading = false
+    private(set) var isPostsLoading = false
+    private(set) var isConversationLoading = false
+    private(set) var isPostRepliesLoading = false
+
+
+    // MARK: - Playable Workout Catalog
+
+    /// Authenticated workout templates available from the backend. These are
+    /// definitions, not active sessions; selecting one creates a fresh local
+    /// Workout session ID before Fifoo Play opens.
+    private(set) var playableWorkoutTemplates: [Workout] = []
+    private(set) var isPlayableWorkoutsLoading = false
+    private(set) var playableWorkoutsErrorMessage: String?
+
+
     // MARK: - Application Action Trace
 
     /// Local-only trace used during Step 1 to prove every UI intent reaches
@@ -198,6 +224,8 @@ final class SocketManager {
         case hyperlinkUpvoted
         case hyperlinkDownvoted
         case playOpened
+        case playWorkoutPickerOpened
+        case playWorkoutSelected
 
         // Routes
         case completedRouteTapped
@@ -638,6 +666,23 @@ extension SocketManager {
         searchSocketDebounceTask?.cancel()
         searchSocketDebounceTask = nil
 
+        conversations = []
+        friends = []
+        postsFeed = []
+        activePostReplies = []
+        activePostID = nil
+        activeConversationID = nil
+        activeConversationMessages = []
+        isConversationsLoading = false
+        isFriendsLoading = false
+        isPostsLoading = false
+        isConversationLoading = false
+        isPostRepliesLoading = false
+
+        playableWorkoutTemplates = []
+        isPlayableWorkoutsLoading = false
+        playableWorkoutsErrorMessage = nil
+
         backendConfiguration = .productionPlaceholder
     }
 }
@@ -846,6 +891,50 @@ private extension SocketManager {
             )
         }
 
+        registerIncoming(.conversations) { [weak self] data in
+            self?.handleSocialConversations(data)
+        }
+
+        registerIncoming(.conversationOpened) { [weak self] data in
+            self?.handleSocialConversationOpened(data)
+        }
+
+        registerIncoming(.conversationMessages) { [weak self] data in
+            self?.handleSocialConversationMessages(data)
+        }
+
+        registerIncoming(.conversationMessage) { [weak self] data in
+            self?.handleSocialConversationMessage(data)
+        }
+
+        registerIncoming(.friends) { [weak self] data in
+            self?.handleSocialFriends(data)
+        }
+
+        registerIncoming(.posts) { [weak self] data in
+            self?.handleSocialPosts(data)
+        }
+
+        registerIncoming(.postFeedSaved) { [weak self] data in
+            self?.handleSocialPostSaved(data)
+        }
+
+        registerIncoming(.postReplies) { [weak self] data in
+            self?.handleSocialPostReplies(data)
+        }
+
+        registerIncoming(.postReply) { [weak self] data in
+            self?.handleSocialPostReply(data)
+        }
+
+        registerIncoming(
+            .workoutCatalog
+        ) { [weak self] data in
+            self?.handlePlayableWorkoutCatalog(
+                data
+            )
+        }
+
         registerIncoming(
             .workout
         ) { [weak self] data in
@@ -973,6 +1062,9 @@ private extension SocketManager {
 
             self.requestInitialGameSnapshot()
             self.requestInitialPlayData()
+            self.requestConversations()
+            self.requestFriends()
+            self.requestPostsFeed()
         }
     }
 }
@@ -1005,6 +1097,60 @@ extension SocketManager {
                 payload,
             requiresSnapshot:
                 false
+        )
+    }
+
+
+    var hasPlayableWorkout: Bool {
+        guard !workout.exercises.isEmpty,
+              !workout.name
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+                .isEmpty
+        else {
+            return false
+        }
+
+        switch workout.status {
+        case .completed, .ended:
+            return false
+
+        case .notStarted, .active, .paused:
+            return true
+        }
+    }
+
+
+    func playWorkoutPickerOpened() {
+        recordApplicationAction(
+            .playWorkoutPickerOpened
+        )
+    }
+
+
+    func requestPlayableWorkouts() {
+        guard canEmitAuthenticatedSocketEvents else {
+            isPlayableWorkoutsLoading =
+                false
+
+            playableWorkoutsErrorMessage =
+                "Connect to Fifoo to load workouts."
+            return
+        }
+
+        isPlayableWorkoutsLoading =
+            true
+
+        playableWorkoutsErrorMessage =
+            nil
+
+        emitSocialDirect(
+            event:
+                .workoutCatalogRequest,
+            payload:
+                GameEmptyPayload()
         )
     }
 
@@ -1258,6 +1404,36 @@ private extension SocketManager {
     }
 
 
+    func handlePlayableWorkoutCatalog(
+        _ data: [Any]
+    ) {
+
+        guard let templates: [Workout] =
+                decodeFirstPayload(
+                    data,
+                    as:
+                        [Workout].self
+                )
+        else {
+            isPlayableWorkoutsLoading =
+                false
+
+            playableWorkoutsErrorMessage =
+                "The workout list could not be decoded."
+            return
+        }
+
+        playableWorkoutTemplates =
+            templates
+
+        isPlayableWorkoutsLoading =
+            false
+
+        playableWorkoutsErrorMessage =
+            nil
+    }
+
+
     func handleServerWorkout(
         _ data: [Any]
     ) {
@@ -1363,6 +1539,14 @@ private extension SocketManager {
             lastBackendError =
                 payload.message
 
+            if isPlayableWorkoutsLoading {
+                isPlayableWorkoutsLoading =
+                    false
+
+                playableWorkoutsErrorMessage =
+                    payload.message
+            }
+
         } else {
 
             lastBackendError =
@@ -1375,7 +1559,308 @@ private extension SocketManager {
                     .joined(
                         separator: ", "
                     )
+
+            if isPlayableWorkoutsLoading {
+                isPlayableWorkoutsLoading =
+                    false
+
+                playableWorkoutsErrorMessage =
+                    lastBackendError
+            }
         }
+    }
+}
+
+
+// MARK: - Account / Social Hub
+
+extension SocketManager {
+
+    func requestConversations() {
+        isConversationsLoading = true
+        emitSocialDirect(
+            event: .conversationsRequest,
+            payload: GameEmptyPayload()
+        )
+    }
+
+    func requestFriends() {
+        isFriendsLoading = true
+        emitSocialDirect(
+            event: .friendsRequest,
+            payload: SocialFriendsRequestPayload(
+                mapDate: currentMapDateString
+            )
+        )
+    }
+
+    func requestPostsFeed(
+        limit: Int = 50,
+        offset: Int = 0
+    ) {
+        isPostsLoading = true
+        emitSocialDirect(
+            event: .postsRequest,
+            payload: SocialPostsRequestPayload(
+                limit: limit,
+                offset: offset
+            )
+        )
+    }
+
+    func openConversation(
+        _ conversation: SocialConversationSummary
+    ) {
+        activeConversationID = conversation.conversationID
+        activeConversationMessages = []
+        isConversationLoading = true
+
+        emitSocialDirect(
+            event: .conversationMessagesRequest,
+            payload: SocialConversationIDPayload(
+                conversationID: conversation.conversationID
+            )
+        )
+    }
+
+    func openConversation(
+        with friend: SocialFriend
+    ) {
+        activeConversationID = nil
+        activeConversationMessages = []
+        isConversationLoading = true
+
+        emitSocialDirect(
+            event: .conversationOpen,
+            payload: SocialConversationPartnerPayload(
+                partnerUserID: friend.userID
+            )
+        )
+    }
+
+    func openSupportConversation() {
+        activeConversationID = nil
+        activeConversationMessages = []
+        isConversationLoading = true
+
+        emitSocialDirect(
+            event: .supportConversationOpen,
+            payload: GameEmptyPayload()
+        )
+    }
+
+    func closeActiveConversation() {
+        activeConversationID = nil
+        activeConversationMessages = []
+        isConversationLoading = false
+    }
+
+    func sendConversationMessage(
+        _ text: String
+    ) {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty,
+              let conversationID = activeConversationID
+        else { return }
+
+        emitDirectWithAck(
+            event: .conversationMessageSend,
+            payload: SocialMessageSendPayload(
+                conversationID: conversationID,
+                body: cleaned
+            )
+        ) { [weak self] ack in
+            guard let self else { return }
+            if ack.success {
+                self.lastBackendError = nil
+            } else {
+                self.lastBackendError = ack.message ?? "Message could not be sent."
+            }
+        }
+    }
+
+    func openPostReplies(_ post: SocialPost) {
+        activePostID = post.postID
+        activePostReplies = []
+        isPostRepliesLoading = true
+        emitSocialDirect(
+            event: .postRepliesRequest,
+            payload: SocialPostIDPayload(postID: post.postID)
+        )
+    }
+
+    func sendPostFeedReply(_ text: String) {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, let postID = activePostID else { return }
+        emitDirectWithAck(
+            event: .postReplySend,
+            payload: SocialPostReplySendPayload(postID: postID, body: cleaned)
+        ) { [weak self] ack in
+            guard let self else { return }
+            if !ack.success {
+                self.lastBackendError = ack.message ?? "Reply could not be sent."
+            }
+        }
+    }
+
+    func setPostFeedSaved(
+        postID: UUID,
+        isSaved: Bool
+    ) {
+        if let index = postsFeed.firstIndex(where: { $0.postID == postID }) {
+            postsFeed[index].isSaved = isSaved
+            postsFeed[index].saveCount = max(
+                0,
+                postsFeed[index].saveCount + (isSaved ? 1 : -1)
+            )
+        }
+
+        emitDirectWithAck(
+            event: .postFeedSave,
+            payload: SocialPostSavePayload(
+                postID: postID,
+                isSaved: isSaved
+            )
+        ) { [weak self] ack in
+            guard let self else { return }
+            if !ack.success {
+                self.lastBackendError = ack.message ?? "Post save could not be updated."
+                self.requestPostsFeed()
+            }
+        }
+    }
+}
+
+
+private extension SocketManager {
+
+    func emitSocialDirect<Payload>(
+        event: GameSocketOutgoingEvent,
+        payload: Payload
+    ) where Payload: Codable & Sendable {
+        guard canEmitAuthenticatedSocketEvents,
+              let socket
+        else { return }
+
+        do {
+            socket.emit(
+                event.rawValue,
+                try encodeDictionary(payload)
+            )
+        } catch {
+            lastBackendError =
+                "Unable to encode \(event.rawValue): \(error.localizedDescription)"
+        }
+    }
+
+    func handleSocialConversations(_ data: [Any]) {
+        guard let payload: [SocialConversationSummary] =
+                decodeFirstPayload(data, as: [SocialConversationSummary].self)
+        else { return }
+        conversations = payload
+        isConversationsLoading = false
+    }
+
+    func handleSocialConversationOpened(_ data: [Any]) {
+        guard let payload: SocialConversationOpenedPayload =
+                decodeFirstPayload(data, as: SocialConversationOpenedPayload.self)
+        else { return }
+        activeConversationID = payload.conversationID
+        requestConversations()
+    }
+
+    func handleSocialConversationMessages(_ data: [Any]) {
+        guard let payload: SocialConversationMessagesPayload =
+                decodeFirstPayload(data, as: SocialConversationMessagesPayload.self)
+        else { return }
+        guard activeConversationID == nil || activeConversationID == payload.conversationID
+        else { return }
+        activeConversationID = payload.conversationID
+        activeConversationMessages = payload.messages
+        isConversationLoading = false
+    }
+
+    func handleSocialConversationMessage(_ data: [Any]) {
+        guard let message: SocialMessage =
+                decodeFirstPayload(data, as: SocialMessage.self)
+        else { return }
+
+        if activeConversationID == message.conversationID,
+           !activeConversationMessages.contains(where: { $0.messageID == message.messageID }) {
+            activeConversationMessages.append(message)
+        }
+
+        if let index = conversations.firstIndex(where: { $0.conversationID == message.conversationID }) {
+            let old = conversations[index]
+            conversations[index] = SocialConversationSummary(
+                conversationID: old.conversationID,
+                title: old.title,
+                participants: old.participants,
+                lastMessage: SocialConversationLastMessage(
+                    messageID: message.messageID,
+                    body: message.body,
+                    senderID: message.senderID,
+                    createdAt: message.createdAt
+                ),
+                updatedAt: message.createdAt,
+                isSupport: old.isSupport
+            )
+            conversations.sort {
+                ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
+            }
+        } else {
+            requestConversations()
+        }
+    }
+
+    func handleSocialFriends(_ data: [Any]) {
+        guard let payload: [SocialFriend] =
+                decodeFirstPayload(data, as: [SocialFriend].self)
+        else { return }
+        friends = payload
+        isFriendsLoading = false
+    }
+
+    func handleSocialPosts(_ data: [Any]) {
+        guard let payload: [SocialPost] =
+                decodeFirstPayload(data, as: [SocialPost].self)
+        else { return }
+        postsFeed = payload
+        isPostsLoading = false
+    }
+
+    func handleSocialPostReplies(_ data: [Any]) {
+        guard let payload: SocialPostRepliesPayload =
+                decodeFirstPayload(data, as: SocialPostRepliesPayload.self)
+        else { return }
+        activePostID = payload.postID
+        activePostReplies = payload.replies
+        isPostRepliesLoading = false
+    }
+
+    func handleSocialPostReply(_ data: [Any]) {
+        guard let reply: SocialPostReply =
+                decodeFirstPayload(data, as: SocialPostReply.self)
+        else { return }
+
+        if activePostID == reply.postID,
+           !activePostReplies.contains(where: { $0.replyID == reply.replyID }) {
+            activePostReplies.append(reply)
+        }
+
+        if let index = postsFeed.firstIndex(where: { $0.postID == reply.postID }) {
+            postsFeed[index].replyCount += 1
+        }
+    }
+
+    func handleSocialPostSaved(_ data: [Any]) {
+        guard let payload: SocialPostSavedPayload =
+                decodeFirstPayload(data, as: SocialPostSavedPayload.self)
+        else { return }
+        guard let index = postsFeed.firstIndex(where: { $0.postID == payload.postID })
+        else { return }
+        postsFeed[index].isSaved = payload.isSaved
+        postsFeed[index].saveCount = payload.saveCount
     }
 }
 
@@ -5385,6 +5870,97 @@ extension SocketManager {
 // =====================================================
 
 extension SocketManager {
+
+    /// Creates a fresh Fifoo Play session from a reusable backend workout
+    /// template. `sourceWorkoutID` retains the catalog definition identity,
+    /// while the new UUID becomes the independent session identity persisted
+    /// by workout_sessions.client_workout_id.
+    func activateStandaloneWorkout(
+        from template: Workout
+    ) {
+
+        var exercises =
+            template.exercises
+
+        for index in exercises.indices {
+            exercises[index].status = .notStarted
+            exercises[index].stepsCompleted = 0
+            exercises[index].pedometerDistanceMeters = 0
+            exercises[index].floorsAscended = 0
+            exercises[index].floorsDescended = 0
+            exercises[index].averageCadence = nil
+            exercises[index].averagePace = nil
+            exercises[index].startedAt = nil
+            exercises[index].pausedAt = nil
+            exercises[index].resumedAt = nil
+            exercises[index].completedAt = nil
+            exercises[index].pausePeriods = []
+        }
+
+        let sourceWorkoutID =
+            template.sourceWorkoutID
+            ??
+            template.id.uuidString
+
+        workout =
+            Workout(
+                id:
+                    UUID(),
+                sourceWorkoutID:
+                    sourceWorkoutID,
+                sourceActivityNodeID:
+                    nil,
+                name:
+                    template.name,
+                description:
+                    template.description,
+                exercises:
+                    exercises,
+                status:
+                    .notStarted,
+                startedAt:
+                    nil,
+                endedAt:
+                    nil,
+                pausedAt:
+                    nil,
+                resumedAt:
+                    nil,
+                pausePeriods:
+                    [],
+                currentWorkoutExerciseID:
+                    nil,
+                totalSteps:
+                    0,
+                totalPedometerDistanceMeters:
+                    0,
+                totalFloorsAscended:
+                    0,
+                totalFloorsDescended:
+                    0,
+                createdAt:
+                    Date(),
+                updatedAt:
+                    Date()
+            )
+
+        liveMessages =
+            []
+
+        liveReactions =
+            []
+
+        recordApplicationAction(
+            .playWorkoutSelected,
+            metadata: [
+                "sourceWorkoutId":
+                    sourceWorkoutID,
+                "title":
+                    template.name
+            ]
+        )
+    }
+
 
     /// Loads the selected independent ActivityWorkout into the existing Fifoo
     /// Play engine. ActivityWorkout summaries intentionally do not duplicate

@@ -12,6 +12,7 @@ struct AppOverLayBottomRow: View {
     var geo: GeometryProxy
     @Binding var isShowingSearchView: Bool
     @Binding var isShowingHomeMenuView: Bool
+    let onPlayTapped: () -> Void
     let onAddNodeTapped: () -> Void
     
     var body: some View {
@@ -33,9 +34,7 @@ struct AppOverLayBottomRow: View {
                 )
                 
                 Button {
-                    
-                    socketManager.openPlay()
-                    
+                    onPlayTapped()
                 } label: {
                     Text(Image(systemName: "play.square.stack.fill"))
                         .font(.system(size: 28))

@@ -25,6 +25,8 @@ struct AppOverLayView: View {
     @State private var isShowingProgressDataView = false
     
     
+    let onPlayTapped: () -> Void
+    let onPathTapped: () -> Void
     let onAddNodeTapped: () -> Void
     
     var body: some View {
@@ -56,6 +58,7 @@ struct AppOverLayView: View {
                             geo: geo,
                             isShowingSearchView: $isShowingSearchView,
                             isShowingHomeMenuView: $isShowingHomeMenuView,
+                            onPlayTapped: onPlayTapped,
                             onAddNodeTapped: onAddNodeTapped
                         )
                         
@@ -63,7 +66,46 @@ struct AppOverLayView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding()
                     .background(.clear)
-                    
+
+                    // MARK: - Day Path
+                    // A persistent path affordance sits above the bottom app
+                    // controls. It opens the same inspector used when the
+                    // chosen route itself is tapped on the map: completed
+                    // stops first, chosen/future stops second.
+                    VStack {
+                        Spacer()
+
+                        HStack {
+                            Spacer()
+
+                            Button {
+                                onPathTapped()
+                            } label: {
+                                Label(
+                                    "Path",
+                                    systemImage: "point.topleft.down.to.point.bottomright.curvepath"
+                                )
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 11)
+                                .background(
+                                    Capsule()
+                                        .fill(.ultraThinMaterial)
+                                )
+                                .overlay {
+                                    Capsule()
+                                        .stroke(.white.opacity(0.35), lineWidth: 0.5)
+                                }
+                                .shadow(radius: 6, y: 3)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 96)
+                    }
+                    .allowsHitTesting(!isShowingHomeMenuView && !isShowingProgressDataView)
+
                     // Custom Full Screen Cover
                     if isShowingHomeMenuView {
                         

@@ -56,6 +56,18 @@ nonisolated enum GameSocketOutgoingEvent:
     case postSave = "game:post:save"
     case hyperlinkVote = "game:hyperlink:vote"
 
+    // Account/social hub
+    case conversationsRequest = "game:social:conversations:request"
+    case conversationOpen = "game:social:conversation:open"
+    case supportConversationOpen = "game:social:support:open"
+    case conversationMessagesRequest = "game:social:conversation:messages:request"
+    case conversationMessageSend = "game:social:conversation:message:send"
+    case friendsRequest = "game:social:friends:request"
+    case postsRequest = "game:social:posts:request"
+    case postFeedSave = "game:social:post:save"
+    case postRepliesRequest = "game:social:post:replies:request"
+    case postReplySend = "game:social:post:reply:send"
+
     // Routes
     case routeSelect = "game:route:select"
     case routeBuild = "game:route:build"
@@ -71,6 +83,7 @@ nonisolated enum GameSocketOutgoingEvent:
     case searchQuery = "game:search:query"
 
     // Fifoo Play
+    case workoutCatalogRequest = "game:play:workouts:request"
     case requestPlayData = "game:play:request"
     case workoutStart = "game:play:workout:start"
     case workoutPause = "game:play:workout:pause"
@@ -103,10 +116,22 @@ nonisolated enum GameSocketIncomingEvent:
     case searchResults = "game:search:results"
 
     // Fifoo Play
+    case workoutCatalog = "game:play:workouts"
     case workout = "game:play:workout"
     case liveMessage = "game:play:message"
     case liveMessages = "game:play:messages"
     case liveReaction = "game:play:reaction"
+
+    // Account/social hub
+    case conversations = "game:social:conversations"
+    case conversationOpened = "game:social:conversation:opened"
+    case conversationMessages = "game:social:conversation:messages"
+    case conversationMessage = "game:social:conversation:message"
+    case friends = "game:social:friends"
+    case posts = "game:social:posts"
+    case postFeedSaved = "game:social:post:saved"
+    case postReplies = "game:social:post:replies"
+    case postReply = "game:social:post:reply"
 
     // General server failure pushed outside an ack
     case serverError = "game:error"

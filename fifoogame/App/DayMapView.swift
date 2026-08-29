@@ -56,6 +56,13 @@ struct DayMapView: View {
         GameNodeID?
 
 
+    /// Presented when the global Play button is tapped without an active or
+    /// restored workout session. The list is loaded from the authenticated
+    /// backend workout catalog.
+    @State
+    private var isShowingPlayWorkoutPicker =
+        false
+
 
     @State
     private var presentedMediaNodeID:
@@ -209,12 +216,18 @@ struct DayMapView: View {
                 )
                 .ignoresSafeArea()
                 
-                AppOverLayView {
-                    presentAddNode(
-                        at:
-                            socketManager.defaultNewNodeCoordinate
-                    )
-                }
+                AppOverLayView(
+                    onPlayTapped:
+                        handleHomePlayTapped,
+                    onPathTapped:
+                        handleHomePathTapped,
+                    onAddNodeTapped: {
+                        presentAddNode(
+                            at:
+                                socketManager.defaultNewNodeCoordinate
+                        )
+                    }
+                )
 
 
                 if store.focusedAlternativeRouteID != nil {
@@ -413,6 +426,27 @@ struct DayMapView: View {
             content:
                 routeInspectorSheet
         )
+
+        .sheet(
+            isPresented:
+                $isShowingPlayWorkoutPicker
+        ) {
+            PlayWorkoutSelectionSheet(
+                workouts:
+                    socketManager.playableWorkoutTemplates,
+                isLoading:
+                    socketManager.isPlayableWorkoutsLoading,
+                errorMessage:
+                    socketManager.playableWorkoutsErrorMessage,
+                onRefresh: {
+                    socketManager.requestPlayableWorkouts()
+                },
+                onSelect:
+                    selectPlayableWorkoutTemplate
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         
         // MARK: - Appear
 
@@ -1400,6 +1434,329 @@ private extension DayMapView {
 }
 
 
+private struct PlayWorkoutSelectionSheet: View {
+
+    let workouts:
+        [Workout]
+
+    let isLoading:
+        Bool
+
+    let errorMessage:
+        String?
+
+    let onRefresh:
+        () -> Void
+
+    let onSelect:
+        (Workout) -> Void
+
+    @Environment(\.dismiss)
+    private var dismiss
+
+
+    var body: some View {
+
+        NavigationStack {
+
+            Group {
+
+                if isLoading
+                    && workouts.isEmpty {
+
+                    VStack(
+                        spacing:
+                            14
+                    ) {
+
+                        ProgressView()
+
+                        Text(
+                            "Loading your workouts…"
+                        )
+                        .font(
+                            .callout
+                        )
+                        .foregroundStyle(
+                            .secondary
+                        )
+                    }
+                    .frame(
+                        maxWidth:
+                            .infinity,
+                        maxHeight:
+                            .infinity
+                    )
+
+                } else if workouts.isEmpty {
+
+                    ContentUnavailableView {
+                        Label(
+                            "No Workouts Available",
+                            systemImage:
+                                "figure.strengthtraining.traditional"
+                        )
+                    } description: {
+                        Text(
+                            errorMessage
+                            ??
+                            "There are no playable workouts available for this account yet."
+                        )
+                    } actions: {
+                        Button(
+                            "Try Again"
+                        ) {
+                            onRefresh()
+                        }
+                    }
+
+                } else {
+
+                    List {
+
+                        Section {
+
+                            ForEach(
+                                workouts
+                            ) { workout in
+
+                                Button {
+                                    onSelect(
+                                        workout
+                                    )
+                                } label: {
+                                    PlayWorkoutTemplateRow(
+                                        workout:
+                                            workout
+                                    )
+                                }
+                                .buttonStyle(
+                                    .plain
+                                )
+                            }
+
+                        } header: {
+                            Text(
+                                "Choose a workout to start Fifoo Play"
+                            )
+                        }
+                    }
+                    .listStyle(
+                        .insetGrouped
+                    )
+                    .refreshable {
+                        onRefresh()
+                    }
+                }
+            }
+            .navigationTitle(
+                "Workouts"
+            )
+            .navigationBarTitleDisplayMode(
+                .inline
+            )
+            .toolbar {
+
+                ToolbarItem(
+                    placement:
+                        .cancellationAction
+                ) {
+                    Button(
+                        "Close"
+                    ) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+private struct PlayWorkoutTemplateRow: View {
+
+    let workout:
+        Workout
+
+
+    var body: some View {
+
+        HStack(
+            spacing:
+                14
+        ) {
+
+            Group {
+                if let media =
+                    workout
+                        .exercises
+                        .compactMap(\.media)
+                        .first {
+
+                    AsyncImage(
+                        url:
+                            media.url
+                    ) { phase in
+
+                        switch phase {
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+
+                        case .empty:
+                            ProgressView()
+
+                        case .failure:
+                            workoutPlaceholder
+
+                        @unknown default:
+                            workoutPlaceholder
+                        }
+                    }
+
+                } else {
+                    workoutPlaceholder
+                }
+            }
+            .frame(
+                width:
+                    72,
+                height:
+                    72
+            )
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius:
+                        14
+                )
+            )
+
+
+            VStack(
+                alignment:
+                    .leading,
+                spacing:
+                    5
+            ) {
+
+                Text(
+                    workout.name
+                )
+                .font(
+                    .headline
+                )
+                .foregroundStyle(
+                    .primary
+                )
+
+                Text(
+                    workoutSummary
+                )
+                .font(
+                    .caption
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+
+                if let description =
+                    workout.description,
+                   !description.isEmpty {
+
+                    Text(
+                        description
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                    .lineLimit(
+                        2
+                    )
+                }
+            }
+
+            Spacer(
+                minLength:
+                    0
+            )
+
+            Image(
+                systemName:
+                    "play.circle.fill"
+            )
+            .font(
+                .title2
+            )
+            .foregroundStyle(
+                .primary
+            )
+        }
+        .padding(
+            .vertical,
+            4
+        )
+    }
+
+
+    private var workoutSummary:
+        String {
+
+        let exerciseCount =
+            workout.exercises.count
+
+        let duration =
+            workout
+                .exercises
+                .compactMap(\.durationInSeconds)
+                .reduce(
+                    0,
+                    +
+                )
+
+        let minutes =
+            Int(
+                duration / 60
+            )
+
+        let exerciseText =
+            "\(exerciseCount) exercise\(exerciseCount == 1 ? "" : "s")"
+
+        guard minutes > 0 else {
+            return exerciseText
+        }
+
+        return
+            "\(minutes) min • \(exerciseText)"
+    }
+
+
+    private var workoutPlaceholder:
+        some View {
+
+        ZStack {
+            Color.secondary.opacity(
+                0.12
+            )
+
+            Image(
+                systemName:
+                    "figure.strengthtraining.traditional"
+            )
+            .font(
+                .title2
+            )
+            .foregroundStyle(
+                .secondary
+            )
+        }
+    }
+}
+
+
 private struct AddNodePresentation:
     Identifiable {
 
@@ -1859,6 +2216,66 @@ private extension DayMapView {
         store.consumePendingNodeAction()
     }
 }
+
+private extension DayMapView {
+
+    func handleHomePlayTapped() {
+
+        if socketManager.hasPlayableWorkout {
+            activeIndependentWorkoutNodeID =
+                nil
+
+            socketManager.openPlay()
+            return
+        }
+
+        socketManager.playWorkoutPickerOpened()
+        socketManager.requestPlayableWorkouts()
+        isShowingPlayWorkoutPicker =
+            true
+    }
+
+
+    func selectPlayableWorkoutTemplate(
+        _ template: Workout
+    ) {
+
+        activeIndependentWorkoutNodeID =
+            nil
+
+        socketManager.activateStandaloneWorkout(
+            from:
+                template
+        )
+
+        isShowingPlayWorkoutPicker =
+            false
+
+        socketManager.openPlay()
+    }
+
+
+    func handleHomePathTapped() {
+
+        let routeID =
+            store
+                .routeState
+                .chosenFutureRoute
+                .id
+
+        socketManager.handleChosenRouteTap(
+            routeID:
+                routeID
+        )
+
+        presentedRouteTarget =
+            .chosen(
+                routeID:
+                    routeID
+            )
+    }
+}
+
 
 private extension DayMapView {
 
