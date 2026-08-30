@@ -1,11 +1,3 @@
-//
-//  AppOverLayTopRow.swift
-//  fifoogame
-//
-//  Created by Daudi Sagala on 8/25/26.
-//
-
-
 import SwiftUI
 
 struct AppOverLayTopRow: View {
@@ -23,24 +15,20 @@ struct AppOverLayTopRow: View {
 
 
     var body: some View {
-
         HStack(
             alignment: .center,
             spacing: 5
         ) {
-
             // The calendar title is an actual control so the user can browse
             // another Day Map without hunting for a separate date action.
             Button(
                 action:
                     onCalendarTapped
             ) {
-
                 HStack(
                     alignment: .center,
                     spacing: 3
                 ) {
-
                     Image(
                         "calendar_color"
                     )
@@ -49,7 +37,7 @@ struct AppOverLayTopRow: View {
                         width: 25,
                         height: 25
                     )
-
+                    Spacer()
                     Text(
                         weekdayString(
                             from:
@@ -58,7 +46,41 @@ struct AppOverLayTopRow: View {
                     )
                     .font(
                         .system(
-                            size: 20,
+                            size: 18,
+                            weight: .heavy,
+                            design: .rounded
+                        )
+                    )
+                    .foregroundStyle(.black)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    Text(
+                        monthString(
+                            from:
+                                socketManager.selectedDayMapDate
+                        )
+                    )
+                    .font(
+                        .system(
+                            size: 18,
+                            weight: .heavy,
+                            design: .rounded
+                        )
+                    )
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                    Text(
+                        dayNumber(
+                            from:
+                                socketManager.selectedDayMapDate
+                        )
+                    )
+                    .font(
+                        .system(
+                            size: 18,
                             weight: .heavy,
                             design: .rounded
                         )
@@ -69,37 +91,6 @@ struct AppOverLayTopRow: View {
                     .minimumScaleFactor(0.7)
 
                     Text(
-                        monthString(
-                            from:
-                                socketManager.selectedDayMapDate
-                        )
-                    )
-                    .font(
-                        .system(
-                            size: 20,
-                            weight: .heavy,
-                            design: .rounded
-                        )
-                    )
-                    .foregroundStyle(.black)
-                    .textCase(.uppercase)
-
-                    Text(
-                        dayNumber(
-                            from:
-                                socketManager.selectedDayMapDate
-                        )
-                    )
-                    .font(
-                        .system(
-                            size: 20,
-                            weight: .heavy,
-                            design: .rounded
-                        )
-                    )
-                    .foregroundStyle(.black)
-
-                    Text(
                         yearString(
                             from:
                                 socketManager.selectedDayMapDate
@@ -107,7 +98,7 @@ struct AppOverLayTopRow: View {
                     )
                     .font(
                         .system(
-                            size: 20,
+                            size: 18,
                             weight: .heavy,
                             design: .rounded
                         )
@@ -115,25 +106,23 @@ struct AppOverLayTopRow: View {
                     .foregroundStyle(
                         .black.opacity(0.9)
                     )
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 }
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
                 "Choose Day Map date"
             )
-
             Spacer()
-
             Button {
-
                 withAnimation(
                     .spring()
                 ) {
                     isShowingProgressDataView.toggle()
                 }
-
             } label: {
-
                 UserCircularProgressBar(
                     progress:
                         socketManager.userDailyProgress
@@ -159,13 +148,10 @@ struct AppOverLayTopRow: View {
     private func monthString(
         from date: Date
     ) -> String {
-
         let formatter =
             DateFormatter()
-
         formatter.dateFormat =
             "MMMM"
-
         return formatter.string(
             from: date
         )
@@ -175,14 +161,11 @@ struct AppOverLayTopRow: View {
     private func yearString(
         from date: Date
     ) -> String {
-
         let formatter =
             DateFormatter()
-
         // Calendar year, not week-based year.
         formatter.dateFormat =
             "yyyy"
-
         return formatter.string(
             from: date
         )
@@ -192,13 +175,10 @@ struct AppOverLayTopRow: View {
     private func weekdayString(
         from date: Date
     ) -> String {
-
         let formatter =
             DateFormatter()
-
         formatter.dateFormat =
             "EEEE"
-
         return formatter.string(
             from: date
         )
@@ -208,13 +188,10 @@ struct AppOverLayTopRow: View {
     private func dayNumber(
         from date: Date
     ) -> String {
-
         let formatter =
             DateFormatter()
-
         formatter.dateFormat =
             "d"
-
         return formatter.string(
             from: date
         ) + ", "

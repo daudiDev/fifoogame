@@ -34,6 +34,14 @@ final class MapGridRenderer {
     private var renderState:
         DayMapTileRenderState = .empty
 
+    /// Current wall-clock position for visual emphasis only. GameStore /
+    /// VirtualMapScene remain authoritative for time and route semantics.
+    private var currentDayTime:
+        DayTime = .noon
+
+    private static let currentHourStopScale:
+        CGFloat = 1.30
+
     private(set) var visibleWorldRect:
         CGRect = .zero
 
@@ -82,7 +90,14 @@ final class MapGridRenderer {
         let routeBorderNode = SKShapeNode()
         let routePatternNode = SKSpriteNode()
         let selectionBorderNode = SKShapeNode()
-        let boundaryNode = SKShapeNode(circleOfRadius: 5.5)
+
+        // Current-user/current-time treatment. The boundary marker identifies
+        // the user's exact live route position. The compact marker and time
+        // badge provide emphasis without drawing a large border around the card.
+        let boundaryHaloNode = SKShapeNode()
+        let boundaryNode = SKShapeNode(circleOfRadius: 9.5)
+        let boundaryBadgeNode = SKShapeNode()
+        let boundaryBadgeLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
 
         let hiddenLayer = SKNode()
         let revealedLayer = SKNode()
@@ -128,7 +143,10 @@ final class MapGridRenderer {
             routeBorderNode.isUserInteractionEnabled = false
             routePatternNode.isUserInteractionEnabled = false
             selectionBorderNode.isUserInteractionEnabled = false
+            boundaryHaloNode.isUserInteractionEnabled = false
             boundaryNode.isUserInteractionEnabled = false
+            boundaryBadgeNode.isUserInteractionEnabled = false
+            boundaryBadgeLabel.isUserInteractionEnabled = false
 
             hiddenLayer.isUserInteractionEnabled = false
             revealedLayer.isUserInteractionEnabled = false
@@ -153,7 +171,10 @@ final class MapGridRenderer {
             rootNode.addChild(routeBorderNode)
             rootNode.addChild(routePatternNode)
             rootNode.addChild(selectionBorderNode)
+            rootNode.addChild(boundaryHaloNode)
             rootNode.addChild(boundaryNode)
+            rootNode.addChild(boundaryBadgeNode)
+            rootNode.addChild(boundaryBadgeLabel)
 
             rootNode.addChild(hiddenLayer)
             rootNode.addChild(revealedLayer)
@@ -386,6 +407,49 @@ final class MapGridRenderer {
         }
 
         renderRouteConnectors()
+    }
+
+
+    /// Updates time-dependent map emphasis without changing any model data.
+    /// Real stop cards scheduled during the current clock hour are rendered
+    /// 30% larger. The live ME/NOW label is rendered separately by
+    /// CurrentTimeRenderer at the exact semantic current time/progress point.
+    func renderCurrentTime(
+        _ time: DayTime,
+        animated: Bool = true
+    ) {
+
+        guard currentDayTime != time else {
+            return
+        }
+
+        let previousHour =
+            hourIndex(
+                for: currentDayTime
+            )
+
+        currentDayTime =
+            time
+
+        let newHour =
+            hourIndex(
+                for: time
+            )
+
+        for (_, cell) in renderedCells {
+
+            guard let snapshot = cell.lastSnapshot else {
+                continue
+            }
+
+            applyCurrentTimeEmphasis(
+                snapshot,
+                to: cell,
+                animated:
+                    animated
+                    && previousHour != newHour
+            )
+        }
     }
 
 
@@ -1207,6 +1271,37 @@ private extension MapGridRenderer {
             25
 
 
+        let currentBoundaryHaloRect =
+            cardRect.insetBy(
+                dx: -6,
+                dy: -6
+            )
+
+        cell.boundaryHaloNode.path =
+            CGPath(
+                roundedRect: currentBoundaryHaloRect,
+                cornerWidth: cornerRadius + 6,
+                cornerHeight: cornerRadius + 6,
+                transform: nil
+            )
+
+        cell.boundaryHaloNode.fillColor =
+            .clear
+
+        cell.boundaryHaloNode.strokeColor =
+            RouteVisualTheme.boundaryStrokeColor
+                .withAlphaComponent(0.96)
+
+        cell.boundaryHaloNode.lineWidth =
+            4.5
+
+        cell.boundaryHaloNode.glowWidth =
+            8
+
+        cell.boundaryHaloNode.zPosition =
+            28
+
+
         cell.boundaryNode.fillColor =
             RouteVisualTheme.boundaryFillColor
 
@@ -1214,6 +1309,9 @@ private extension MapGridRenderer {
             RouteVisualTheme.boundaryStrokeColor
 
         cell.boundaryNode.lineWidth =
+            4
+
+        cell.boundaryNode.glowWidth =
             3
 
         cell.boundaryNode.position =
@@ -1223,7 +1321,68 @@ private extension MapGridRenderer {
             )
 
         cell.boundaryNode.zPosition =
-            30
+            31
+
+
+        let boundaryBadgeSize =
+            CGSize(
+                width: min(122, tileSize * 1.62),
+                height: 24
+            )
+
+        let boundaryBadgeRect =
+            CGRect(
+                x: -boundaryBadgeSize.width / 2,
+                y: -boundaryBadgeSize.height / 2,
+                width: boundaryBadgeSize.width,
+                height: boundaryBadgeSize.height
+            )
+
+        cell.boundaryBadgeNode.path =
+            CGPath(
+                roundedRect: boundaryBadgeRect,
+                cornerWidth: 12,
+                cornerHeight: 12,
+                transform: nil
+            )
+
+        cell.boundaryBadgeNode.fillColor =
+            RouteVisualTheme.boundaryStrokeColor
+                .withAlphaComponent(0.98)
+
+        cell.boundaryBadgeNode.strokeColor =
+            .white
+
+        cell.boundaryBadgeNode.lineWidth =
+            2
+
+        cell.boundaryBadgeNode.position =
+            CGPoint(
+                x: 0,
+                y: tileSize / 2 + 18
+            )
+
+        cell.boundaryBadgeNode.zPosition =
+            32
+
+
+        configureLabel(
+            cell.boundaryBadgeLabel,
+            fontSize: 9.5,
+            color: .white
+        )
+
+        cell.boundaryBadgeLabel.horizontalAlignmentMode =
+            .center
+
+        cell.boundaryBadgeLabel.verticalAlignmentMode =
+            .center
+
+        cell.boundaryBadgeLabel.position =
+            cell.boundaryBadgeNode.position
+
+        cell.boundaryBadgeLabel.zPosition =
+            33
 
 
         // Face-down cards use the Pied Piper silhouette as their single
@@ -1585,7 +1744,11 @@ private extension MapGridRenderer {
             cell.lastSnapshot =
                 snapshot
 
-            cell.rootNode.setScale(1)
+            applyCurrentTimeEmphasis(
+                snapshot,
+                to: cell,
+                animated: false
+            )
 
             return
         }
@@ -1604,7 +1767,16 @@ private extension MapGridRenderer {
         cell.lastSnapshot =
             previousSnapshot
 
-        cell.rootNode.setScale(1)
+        applyCurrentTimeEmphasis(
+            previousSnapshot,
+            to: cell,
+            animated: false
+        )
+
+        let targetScale =
+            visualScale(
+                for: snapshot
+            )
 
 
         let midpointSwap =
@@ -1629,8 +1801,16 @@ private extension MapGridRenderer {
 
                 cell.lastSnapshot =
                     snapshot
+
+                self.applyCurrentTimeDecorations(
+                    snapshot,
+                    to: cell
+                )
             }
 
+
+        cell.rootNode.yScale =
+            targetScale
 
         cell.rootNode.run(
             .sequence([
@@ -1640,7 +1820,7 @@ private extension MapGridRenderer {
                 ),
                 midpointSwap,
                 .scaleX(
-                    to: 1,
+                    to: targetScale,
                     duration: 0.14
                 )
             ]),
@@ -1914,8 +2094,122 @@ private extension MapGridRenderer {
             ? 0.98
             : 1
 
+        applyCurrentTimeDecorations(
+            snapshot,
+            to: cell
+        )
+    }
+
+
+    private func applyCurrentTimeEmphasis(
+        _ snapshot: DayMapTileSnapshot,
+        to cell: RenderedCell,
+        animated: Bool
+    ) {
+
+        applyCurrentTimeDecorations(
+            snapshot,
+            to: cell
+        )
+
+        let targetScale =
+            visualScale(
+                for: snapshot
+            )
+
+        cell.rootNode.zPosition =
+            snapshot.isCurrentRouteBoundary
+            ? 90
+            : (targetScale > 1 ? 70 : 0)
+
+        cell.rootNode.removeAction(
+            forKey: "currentHourScale"
+        )
+
+        if animated {
+
+            cell.rootNode.run(
+                .scale(
+                    to: targetScale,
+                    duration: 0.22
+                ),
+                withKey: "currentHourScale"
+            )
+
+        } else {
+
+            cell.rootNode.setScale(
+                targetScale
+            )
+        }
+    }
+
+
+    private func applyCurrentTimeDecorations(
+        _ snapshot: DayMapTileSnapshot,
+        to cell: RenderedCell
+    ) {
+
+        // Pass 5.60.3: all per-tile current-position decoration is disabled.
+        // CurrentTimeRenderer owns the single live label so it can sit at the
+        // exact semantic current time instead of inheriting a route tile's Y.
+        cell.boundaryHaloNode.isHidden =
+            true
+
         cell.boundaryNode.isHidden =
-            !snapshot.isCurrentRouteBoundary
+            true
+
+        cell.boundaryBadgeNode.isHidden =
+            true
+
+        cell.boundaryBadgeLabel.isHidden =
+            true
+
+        cell.boundaryBadgeLabel.text =
+            nil
+    }
+
+
+    private func visualScale(
+        for snapshot: DayMapTileSnapshot
+    ) -> CGFloat {
+
+        guard snapshot.hasNode else {
+            return 1
+        }
+
+        let currentHour =
+            hourIndex(
+                for: currentDayTime
+            )
+
+        let containsCurrentHourStop =
+            snapshot.nodePreviews.contains { preview in
+                hourIndex(
+                    for: preview.time
+                ) == currentHour
+            }
+
+        return containsCurrentHourStop
+            ? Self.currentHourStopScale
+            : 1
+    }
+
+
+    private func hourIndex(
+        for time: DayTime
+    ) -> Int {
+
+        min(
+            23,
+            max(
+                0,
+                Int(
+                    time.secondsFromMidnight
+                    / DayTime.secondsPerHour
+                )
+            )
+        )
     }
 
 

@@ -722,10 +722,8 @@ private extension VirtualMapScene {
         // detached. Their domain logic is retained elsewhere, while the card
         // renderer owns visible nodes, route state, and selection styling.
 
-        timeIndicatorLayer.addChild(
-            currentTimeRenderer
-                .containerNode
-        )
+        // Pass 5.61: no live-position label/marker is rendered. The layer is
+        // retained for compatibility but intentionally has no children.
     }
 }
 
@@ -784,10 +782,8 @@ private extension VirtualMapScene {
 
     func configureCurrentTimeIndicator() {
 
-        currentTimeRenderer.render(
-            time:
-                currentTime
-        )
+        // Intentionally empty. Current-time emphasis is conveyed only by the
+        // 130% sizing of real stops in the current clock hour.
     }
 }
 
@@ -842,9 +838,10 @@ extension VirtualMapScene {
             time
 
 
-        currentTimeRenderer.render(
-            time:
-                time
+        // Tile mode enlarges all real stops scheduled inside the current
+        // clock hour by 30%. No separate live-position label is rendered.
+        gridRenderer.renderCurrentTime(
+            time
         )
     }
 
@@ -1422,6 +1419,28 @@ private extension VirtualMapScene {
                 .mapCoordinateAtTileCenter(
                     for: cellID
                 )
+
+
+        if snapshot.revealState == .revealed,
+           snapshot.nodePreviews.count > 1
+        {
+            emit(
+                .stackedDayTileTapped(
+                    cellID:
+                        cellID,
+                    nodePreviews:
+                        snapshot.nodePreviews,
+                    routeTarget:
+                        snapshot.routeInteractionTarget,
+                    worldPoint:
+                        worldPoint,
+                    mapCoordinate:
+                        tileCoordinate
+                )
+            )
+
+            return
+        }
 
 
         emit(

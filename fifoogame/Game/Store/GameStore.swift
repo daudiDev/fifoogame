@@ -213,6 +213,13 @@ var debugRouteRenderStateOverride:
     @Published
     private(set) var pendingNodeAction:
     GameNodeAction?
+
+    /// Set when a revealed day-map tile contains multiple stops at the exact
+    /// same semantic point. SwiftUI consumes this to present the fan-out
+    /// chooser before any one stop's normal detail sheet is opened.
+    @Published
+    private(set) var pendingStackedNodeSelection:
+        StackedDayTileSelectionRequest?
     
     @Published
     private(set) var pendingRouteAction:
@@ -508,6 +515,12 @@ var debugRouteRenderStateOverride:
         nil
     }
 
+    func consumePendingStackedNodeSelection() {
+
+        pendingStackedNodeSelection =
+            nil
+    }
+
     func consumePendingRoadNodeAddRequest() {
 
         pendingRoadNodeAddRequest =
@@ -697,6 +710,10 @@ var debugRouteRenderStateOverride:
 
 
         pendingNodeAction =
+            nil
+
+
+        pendingStackedNodeSelection =
             nil
 
 
@@ -5527,6 +5544,57 @@ extension GameStore:
                     )
             }
             
+
+            // =============================================
+            // Stacked Day Tile
+            // =============================================
+
+        case let .stackedDayTileTapped(
+            cellID,
+            nodePreviews,
+            routeTarget,
+            _,
+            _
+        ):
+
+            pendingNodeAction = nil
+            pendingRouteAction = nil
+
+            guard nodePreviews.count > 1 else {
+
+                if let nodeID = nodePreviews.first?.nodeID {
+                    requestGameNodeAction(id: nodeID)
+                }
+
+                break
+            }
+
+            if let routeTarget,
+               case let .alternative(routeID) = routeTarget,
+               !isAlternativeRouteFocused(routeID)
+            {
+                // Preserve the existing alternate-route first-tap behavior.
+                // Once the route is focused, the next tap fans out the stops.
+                focusAlternativeRoute(routeID)
+
+                var updated = selection
+                updated.selectRoute(routeID)
+                selection = updated
+
+            } else {
+
+                if routeTarget == nil {
+                    clearAlternativeRouteFocus()
+                    selection.clear()
+                }
+
+                pendingStackedNodeSelection =
+                    StackedDayTileSelectionRequest(
+                        cellID: cellID,
+                        nodePreviews: nodePreviews
+                    )
+            }
+
             
             // =============================================
             // Road Edge
@@ -7014,6 +7082,7 @@ extension GameStore {
 
         selection.clear()
         pendingNodeAction = nil
+        pendingStackedNodeSelection = nil
     }
 
 

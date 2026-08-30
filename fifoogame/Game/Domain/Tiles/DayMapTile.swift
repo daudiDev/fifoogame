@@ -214,6 +214,40 @@ struct DayMapTileSnapshot:
 }
 
 
+
+
+// =====================================================
+// MARK: - Stacked Stop Selection
+// =====================================================
+
+/// One tap on a revealed tile that contains multiple stops opens a compact
+/// fan-out chooser before any individual stop sheet is presented.
+struct StackedDayTileSelectionRequest:
+    Identifiable,
+    Equatable,
+    Sendable {
+
+    let id: UUID
+
+    let cellID:
+        GridCellID
+
+    let nodePreviews:
+        [DayMapTileNodePreview]
+
+
+    init(
+        id: UUID = UUID(),
+        cellID: GridCellID,
+        nodePreviews: [DayMapTileNodePreview]
+    ) {
+
+        self.id = id
+        self.cellID = cellID
+        self.nodePreviews = nodePreviews
+    }
+}
+
 // =====================================================
 // MARK: - Route Connections
 // =====================================================

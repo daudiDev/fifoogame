@@ -3575,6 +3575,23 @@ extension SocketManager {
     }
 
 
+    /// Second-stage selection from a stacked-tile fan-out chooser. Keep this
+    /// routed through SocketManager so the selected stop is logged exactly like
+    /// an ordinary map-node tap before GameStore resolves its normal sheet.
+    func selectGameNodeFromStack(
+        nodeID: GameNodeID
+    ) {
+
+        handleGameNodeTap(
+            nodeID: nodeID
+        )
+
+        gameStore.requestGameNodeAction(
+            id: nodeID
+        )
+    }
+
+
     /// Records that the Add Node workflow was opened at a semantic map
     /// coordinate. Presentation remains a SwiftUI concern; the coordinate and
     /// eventual node draft originate in this application layer.
@@ -6577,6 +6594,26 @@ extension SocketManager:
                 handleMapBackgroundTap(
                     coordinate:
                         coordinate
+                )
+            }
+
+        case let .stackedDayTileTapped(
+            _,
+            _,
+            routeTarget,
+            _,
+            _
+        ):
+
+            // The tile tap itself only opens the fan-out chooser. A concrete
+            // node tap is logged later by selectGameNodeFromStack(_:). Keep
+            // the existing first-tap alternate-route focus logging intact.
+            if let routeTarget,
+               case let .alternative(routeID) = routeTarget,
+               !gameStore.isAlternativeRouteFocused(routeID)
+            {
+                handleAlternateRouteTap(
+                    routeID: routeID
                 )
             }
 

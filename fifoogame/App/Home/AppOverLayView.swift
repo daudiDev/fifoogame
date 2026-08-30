@@ -67,44 +67,35 @@ struct AppOverLayView: View {
                     .padding()
                     .background(.clear)
 
-                    // MARK: - Day Path
-                    // A persistent path affordance sits above the bottom app
-                    // controls. It opens the same inspector used when the
-                    // chosen route itself is tapped on the map: completed
-                    // stops first, chosen/future stops second.
+                    // MARK: - Friend status + Day Path
+                    // A narrow social rail lives in the lower-right quadrant.
+                    // Up to five friends are visible at once and rotate when
+                    // the authenticated user has a larger friends list. The
+                    // icon-only Path control remains directly underneath.
                     VStack {
                         Spacer()
 
                         HStack {
                             Spacer()
 
-                            Button {
-                                onPathTapped()
-                            } label: {
-                                Label(
-                                    "Path",
-                                    systemImage: "point.topleft.down.to.point.bottomright.curvepath"
-                                )
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 11)
-                                .background(
-                                    Capsule()
-                                        .fill(.ultraThinMaterial)
-                                )
-                                .overlay {
-                                    Capsule()
-                                        .stroke(.white.opacity(0.35), lineWidth: 0.5)
-                                }
-                                .shadow(radius: 6, y: 3)
-                            }
-                            .buttonStyle(.plain)
+                            HomeFriendStatusRail(
+                                onPathTapped:
+                                    onPathTapped
+                            )
+                            .padding(
+                                .trailing,
+                                12
+                            )
+                            .padding(
+                                .bottom,
+                                96
+                            )
                         }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 96)
                     }
-                    .allowsHitTesting(!isShowingHomeMenuView && !isShowingProgressDataView)
+                    .allowsHitTesting(
+                        !isShowingHomeMenuView
+                        && !isShowingProgressDataView
+                    )
 
                     // Custom Full Screen Cover
                     if isShowingHomeMenuView {

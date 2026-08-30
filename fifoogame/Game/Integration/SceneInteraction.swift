@@ -33,6 +33,17 @@ enum SceneInteraction:
     )
 
 
+    /// A revealed tile containing more than one stop. The app presents a
+    /// fan-out chooser first so the user can choose the exact stop to open.
+    case stackedDayTileTapped(
+        cellID: GridCellID,
+        nodePreviews: [DayMapTileNodePreview],
+        routeTarget: RouteInteractionTarget?,
+        worldPoint: WorldPoint,
+        mapCoordinate: MapCoordinate
+    )
+
+
     case roadEdgeTapped(
         edgeID: RoadEdgeID,
         worldPoint: WorldPoint,

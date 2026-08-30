@@ -82,6 +82,19 @@ struct DayMapView: View {
     @State
     private var presentedRouteTarget:
         RouteInteractionTarget?
+
+
+    /// Second-step chooser for multiple stops occupying the exact same tile.
+    @State
+    private var stackedStopsPresentation:
+        StackedDayTileSelectionRequest?
+
+
+    /// Deferred until the fan-out sheet has fully dismissed, avoiding a
+    /// sheet-to-sheet presentation race for node types that use `.sheet`.
+    @State
+    private var pendingStackedStopNodeIDToOpen:
+        GameNodeID?
     
 
     // MARK: - Node Actions
@@ -573,6 +586,20 @@ struct DayMapView: View {
 
         .onChange(
             of:
+                store.pendingStackedNodeSelection
+        ) { _, newRequest in
+
+            guard let newRequest else {
+                return
+            }
+
+            pendingStackedStopNodeIDToOpen = nil
+            stackedStopsPresentation = newRequest
+            store.consumePendingStackedNodeSelection()
+        }
+
+        .onChange(
+            of:
                 store.pendingRoadNodeAddRequest
         ) { _, newRequest in
 
@@ -658,6 +685,40 @@ struct DayMapView: View {
             }
         }
         
+        .sheet(
+            item:
+                $stackedStopsPresentation,
+            onDismiss: {
+
+                guard let nodeID =
+                    pendingStackedStopNodeIDToOpen
+                else {
+                    return
+                }
+
+                pendingStackedStopNodeIDToOpen = nil
+
+                socketManager.selectGameNodeFromStack(
+                    nodeID: nodeID
+                )
+            }
+        ) { request in
+
+            StackedStopsFanOutSheet(
+                nodePreviews:
+                    request.nodePreviews,
+                onSelect: { preview in
+
+                    pendingStackedStopNodeIDToOpen =
+                        preview.nodeID
+
+                    stackedStopsPresentation = nil
+                }
+            )
+            .presentationDetents([.height(292)])
+            .presentationDragIndicator(.visible)
+        }
+
         .sheet(
             item:
                 $presentedIndependentWorkoutBrowseNodeID
@@ -1213,6 +1274,7 @@ private extension DayMapView {
 
 
             case .dayTileTapped,
+                 .stackedDayTileTapped,
                  .roadEdgeTapped,
                  .roadVertexTapped,
                  .gameNodeTapped:
@@ -2835,3 +2897,218 @@ private extension DayMapView {
         }
     }
 }
+
+// =====================================================
+// MARK: - Stacked Stops Fan-Out Sheet
+// =====================================================
+
+private struct StackedStopsFanOutSheet: View {
+
+    let nodePreviews:
+        [DayMapTileNodePreview]
+
+    let onSelect:
+        (DayMapTileNodePreview) -> Void
+
+
+    var body: some View {
+
+        VStack(
+            alignment: .leading,
+            spacing: 14
+        ) {
+
+            VStack(
+                alignment: .leading,
+                spacing: 3
+            ) {
+
+                Text("Stops here")
+                    .font(.headline)
+
+                Text("Choose the stop you want to open.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20)
+
+
+            ScrollView(
+                .horizontal,
+                showsIndicators: false
+            ) {
+
+                LazyHStack(
+                    alignment: .top,
+                    spacing: 14
+                ) {
+
+                    ForEach(
+                        nodePreviews,
+                        id: \.nodeID
+                    ) { preview in
+
+                        Button {
+                            onSelect(preview)
+                        } label: {
+                            stackedStopCard(preview)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+            }
+        }
+        .padding(.top, 16)
+    }
+
+
+    private func stackedStopCard(
+        _ preview: DayMapTileNodePreview
+    ) -> some View {
+
+        VStack(
+            alignment: .leading,
+            spacing: 8
+        ) {
+
+            artworkView(
+                for: preview
+            )
+            .frame(
+                width: 126,
+                height: 112
+            )
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 16,
+                    style: .continuous
+                )
+            )
+
+
+            Text(preview.title)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+
+
+            HStack(spacing: 5) {
+
+                Image(
+                    systemName:
+                        preview.kind.systemImageName
+                )
+
+                Text(preview.kind.displayName)
+
+                Text("•")
+
+                Text(preview.time.displayClockString)
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+        .padding(10)
+        .frame(
+            width: 148,
+            alignment: .leading
+        )
+        .background(
+            RoundedRectangle(
+                cornerRadius: 20,
+                style: .continuous
+            )
+            .fill(.thinMaterial)
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: 20,
+                style: .continuous
+            )
+            .stroke(
+                Color.primary.opacity(0.08),
+                lineWidth: 1
+            )
+        }
+        .contentShape(
+            RoundedRectangle(
+                cornerRadius: 20,
+                style: .continuous
+            )
+        )
+    }
+
+
+    @ViewBuilder
+    private func artworkView(
+        for preview: DayMapTileNodePreview
+    ) -> some View {
+
+        switch preview.artworkSource {
+
+        case let .asset(name):
+
+            Image(name)
+                .resizable()
+                .scaledToFill()
+
+
+        case let .remote(urlString):
+
+            AsyncImage(
+                url: URL(string: urlString)
+            ) { phase in
+
+                switch phase {
+
+                case let .success(image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+
+                case .empty:
+                    placeholderArtwork(preview.kind)
+                        .overlay {
+                            ProgressView()
+                        }
+
+                case .failure:
+                    placeholderArtwork(preview.kind)
+
+                @unknown default:
+                    placeholderArtwork(preview.kind)
+                }
+            }
+
+
+        case let .placeholder(kind):
+
+            placeholderArtwork(kind)
+        }
+    }
+
+
+    private func placeholderArtwork(
+        _ kind: GameNodeKind
+    ) -> some View {
+
+        ZStack {
+
+            Rectangle()
+                .fill(
+                    Color.secondary.opacity(0.12)
+                )
+
+            Image(
+                systemName:
+                    kind.systemImageName
+            )
+            .font(.system(size: 34, weight: .semibold))
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+

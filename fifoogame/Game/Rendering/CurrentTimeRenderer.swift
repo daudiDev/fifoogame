@@ -5,7 +5,6 @@
 //  Created by Daudi Sagala on 8/18/26.
 //
 
-
 import SpriteKit
 
 
@@ -20,16 +19,10 @@ final class CurrentTimeRenderer {
 
     // MARK: - Nodes
 
-    private let timeLine =
+    /// Pass 5.60.3: the live-position treatment is intentionally label-only.
+    /// No current-time line, dot, halo, or card-boundary marker is rendered.
+    private let badgeNode =
         SKShapeNode()
-
-
-    private let currentPositionMarker =
-        SKShapeNode(
-            circleOfRadius:
-                18
-        )
-
 
     private let timeLabel =
         SKLabelNode(
@@ -42,7 +35,7 @@ final class CurrentTimeRenderer {
 
     init() {
 
-//        configureNodes() //show position of current time for testing
+        configureNodes()
     }
 
 
@@ -53,68 +46,78 @@ final class CurrentTimeRenderer {
         containerNode.name =
             "currentTimeIndicator"
 
-
-        timeLine.name =
-            "currentTimeLine"
-
-
-        timeLine.strokeColor =
-            .systemRed
+        containerNode.isUserInteractionEnabled =
+            false
 
 
-        timeLine.lineWidth =
-            6
+        let badgeSize =
+            CGSize(
+                width: 126,
+                height: 26
+            )
 
+        let badgeRect =
+            CGRect(
+                x: -badgeSize.width / 2,
+                y: -badgeSize.height / 2,
+                width: badgeSize.width,
+                height: badgeSize.height
+            )
 
-        timeLine.glowWidth =
-            2
+        badgeNode.name =
+            "currentTimeBadge"
 
+        badgeNode.path =
+            CGPath(
+                roundedRect: badgeRect,
+                cornerWidth: 13,
+                cornerHeight: 13,
+                transform: nil
+            )
 
-        currentPositionMarker.name =
-            "currentTimeMarker"
+        badgeNode.fillColor =
+            RouteVisualTheme
+                .boundaryStrokeColor
+                .withAlphaComponent(0.98)
 
-
-        currentPositionMarker.fillColor =
-            .systemRed
-
-
-        currentPositionMarker.strokeColor =
+        badgeNode.strokeColor =
             .white
 
+        badgeNode.lineWidth =
+            2
 
-        currentPositionMarker.lineWidth =
-            4
+        badgeNode.zPosition =
+            200
+
+        badgeNode.isUserInteractionEnabled =
+            false
 
 
         timeLabel.name =
             "currentTimeLabel"
 
-
         timeLabel.fontSize =
-            28
-
+            10
 
         timeLabel.fontColor =
             .white
 
-
         timeLabel.horizontalAlignmentMode =
             .center
 
-
         timeLabel.verticalAlignmentMode =
-            .bottom
+            .center
+
+        timeLabel.zPosition =
+            201
+
+        timeLabel.isUserInteractionEnabled =
+            false
 
 
         containerNode.addChild(
-            timeLine
+            badgeNode
         )
-
-
-        containerNode.addChild(
-            currentPositionMarker
-        )
-
 
         containerNode.addChild(
             timeLabel
@@ -124,27 +127,27 @@ final class CurrentTimeRenderer {
 
     // MARK: - Render
 
+    /// Places the live-user label at the user's true semantic position:
+    ///
+    /// - Y is derived directly from the exact current DayTime.
+    /// - X is derived directly from the current user progress percentage.
+    ///
+    /// This deliberately does not use the current route-boundary tile, because
+    /// a route stop's scheduled time is not necessarily the current clock time.
     func render(
-        time:
-            DayTime
+        time: DayTime,
+        progressPercent: Double
     ) {
-
-        /*
-         We still use 50% as our temporary
-         current-progress reference.
-
-         A real current progress value arrives
-         later with ProgressScorer.
-         */
 
         let coordinate =
             MapCoordinate(
                 time:
                     time,
                 progress:
-                    MapProgress(50)
+                    MapProgress(
+                        progressPercent
+                    )
             )
-
 
         let point =
             MapCoordinateConverter
@@ -153,64 +156,19 @@ final class CurrentTimeRenderer {
                         coordinate
                 )
 
-
-        // MARK: Current-Time Line
-
-        let path =
-            CGMutablePath()
-
-
-        path.move(
-            to:
-                CGPoint(
-                    x:
-                        MapWorldConfiguration
-                            .minimumExplorableX,
-                    y:
-                        point.y
-                )
-        )
-
-
-        path.addLine(
-            to:
-                CGPoint(
-                    x:
-                        MapWorldConfiguration
-                            .maximumExplorableX,
-                    y:
-                        point.y
-                )
-        )
-
-
-        timeLine.path =
-            path
-
-
-        // MARK: Current Progress Reference
-
-        currentPositionMarker.position =
+        let position =
             CGPoint(
-                x:
-                    point.x,
-                y:
-                    point.y
+                x: point.x,
+                y: point.y
             )
 
-
-        // MARK: Label
-
-        timeLabel.text =
-            "NOW • \(time.displayClockString)"
-
+        badgeNode.position =
+            position
 
         timeLabel.position =
-            CGPoint(
-                x:
-                    point.x,
-                y:
-                    point.y + 35
-            )
+            position
+
+        timeLabel.text =
+            "ME • NOW • \(time.displayClockString)"
     }
 }
