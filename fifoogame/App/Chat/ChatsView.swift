@@ -1,5 +1,7 @@
 import SwiftUI
 
+//MARK: Important for user chat
+
 struct ChatsView: View {
     @State private var socketManager = SocketManager.shared
     @State private var auth = AuthManager.shared
